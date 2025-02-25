@@ -192,8 +192,7 @@ fn main() {
         }
 
         // Infer threshold
-        let threshold = quorum(contributors.len() as u32).expect("insufficient participants");
-        info!(threshold, "inferred parameters");
+        let threshold = 3; //hardcoded for now
 
         // Check if I am the orchestrator
         const DEFAULT_MESSAGE_BACKLOG: usize = 256;
