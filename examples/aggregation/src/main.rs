@@ -126,8 +126,9 @@ fn main() {
     let signer = get_signer(key);
     tracing::info!(key = ?signer.public_key(), "loaded signer");
     let public_key = signer.public_g1();
-    // let g1_point = convert_to_g1_point(&public_key);
-    // println!("public key (G1 coordinates): ({}, {})", g1_point.unwrap().X, g1_point.unwrap().Y);
+    let (apk, _, _) = bn254::get_points(&[public_key], &[signer.public_key()], &[]).unwrap();
+    let g1_point = convert_to_g1_point(apk).unwrap();
+    println!("public key G1 coordinates: ({}, {})", g1_point.X, g1_point.Y);
     println!("key: {}", key);
     println!("parts: {:?}", parts);
     println!("me: {:?}", me);
