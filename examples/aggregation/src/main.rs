@@ -33,7 +33,9 @@
 mod bn254;
 mod handlers;
 
-use bn254::Bn254;
+use ark_ff::{Fp, PrimeField};
+use ark_bn254::Fr;
+use bn254::{Bn254, PrivateKey};
 use clap::{value_parser, Arg, Command};
 use commonware_cryptography::Scheme;
 use commonware_p2p::authenticated::{self, Network};
@@ -54,9 +56,20 @@ use std::{
 };
 use std::{str::FromStr, time::Duration};
 use tracing::info;
+use eigen_crypto_bls::{convert_to_g1_point, convert_to_g2_point};
+use alloy_primitives::{address, hex_literal::hex};
 
 // Unique namespace to avoid message replay attacks.
 const APPLICATION_NAMESPACE: &[u8] = b"_COMMONWARE_AGGREGATION_";
+
+fn get_signer(key: u64) -> Bn254 {
+    println!("key: {}", key);
+    let scalar = hex::decode(key.to_string()).expect("Invalid hex string for private key");
+    let fr = Fr::from_be_bytes_mod_order(&scalar);
+    let key = PrivateKey::from(fr);
+    let signer = <Bn254 as Scheme>::from(key).expect("Failed to create signer");
+    return signer;
+}
 
 fn main() {
     // Initialize runtime
@@ -113,8 +126,20 @@ fn main() {
         panic!("Identity not well-formed");
     }
     let key = parts[0].parse::<u64>().expect("Key not well-formed");
-    let signer = Bn254::from_seed(key);
+    // let signer = Bn254::from_seed(key);
+
+
+    // tracing::info!(key = ?signer.public_key(), "loaded signer");
+    // let scalar = hex::decode(parts[0]).expect("Invalid hex string for private key");
+    // let fr = Fr::from_be_bytes_mod_order(&scalar);
+    // let key = PrivateKey::from(fr);
+    
+    // let signer = <Bn254 as Scheme>::from(key).expect("Failed to create signer");
+    let signer = get_signer(key);
     tracing::info!(key = ?signer.public_key(), "loaded signer");
+    let public_key = signer.public_g1();
+    print!("{}", public_key);
+    // std::process::exit(0);
 
     // Configure my port
     let port = parts[1].parse::<u16>().expect("Port not well-formed");
@@ -130,7 +155,7 @@ fn main() {
         panic!("Please provide at least one participant");
     }
     for peer in participants {
-        let verifier = Bn254::from_seed(peer).public_key();
+        let verifier = get_signer(peer).public_key();
         tracing::info!(key = ?verifier, "registered authorized key",);
         recipients.push(verifier);
     }
@@ -144,7 +169,7 @@ fn main() {
             let bootstrapper_key = parts[0]
                 .parse::<u64>()
                 .expect("Bootstrapper key not well-formed");
-            let verifier = Bn254::from_seed(bootstrapper_key).public_key();
+            let verifier = get_signer(bootstrapper_key).public_key();
             let bootstrapper_address =
                 SocketAddr::from_str(parts[1]).expect("Bootstrapper address not well-formed");
             bootstrapper_identities.push((verifier, bootstrapper_address));
@@ -183,7 +208,7 @@ fn main() {
             panic!("Please provide at least one contributor");
         }
         for peer in participants {
-            let signer = Bn254::from_seed(peer);
+            let signer = get_signer(peer);
             let verifier = signer.public_key();
             let verifier_g1 = signer.public_g1();
             tracing::info!(key = ?verifier, "registered contributor",);
@@ -206,7 +231,7 @@ fn main() {
                 DEFAULT_MESSAGE_BACKLOG,
                 COMPRESSION_LEVEL,
             );
-            let orchestrator = Bn254::from_seed(*orchestrator).public_key();
+            let orchestrator = get_signer(*orchestrator).public_key();
             let contributor =
                 handlers::Contributor::new(orchestrator, signer, contributors, threshold as usize);
             runtime.spawn("contributor", contributor.run(sender, receiver));
