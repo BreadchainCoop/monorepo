@@ -14,7 +14,9 @@ use eigen_client_avsregistry::reader::{AvsRegistryChainReader, AvsRegistryReader
 use tracing::info;
 use eigen_logging::{get_logger, init_logger};
 use alloy_provider::{Provider,RootProvider};
-
+use commonware_runtime::{
+    Runner, Spawner,
+};
 use crate::{
     bn254::{self, Bn254},
     handlers::wire,
@@ -44,7 +46,7 @@ use axum::{
 use url::Url;
 use tokio_util::sync::CancellationToken;
 
-pub struct Orchestrator<E: Clock> {
+pub struct Orchestrator<E: Clock + Spawner> {
     runtime: E,
 
     aggregation_frequency: Duration,
@@ -55,7 +57,7 @@ pub struct Orchestrator<E: Clock> {
     t: usize,
 }
 
-impl<E: Clock> Orchestrator<E> {
+impl<E: Clock + Spawner> Orchestrator<E> {
     pub fn new(
         runtime: E,
         aggregation_frequency: Duration,
@@ -121,11 +123,24 @@ impl<E: Clock> Orchestrator<E> {
         // Start the operator info service
         let token = CancellationToken::new();
         let operators_info_service_clone = operators_info_service.clone();
-        tokio::spawn(async move {
+        self.runtime.spawn("operator_info_service", async move {
             let _ = operators_info_service_clone
                 .start_service(&token, current_block_number-1000, current_block_number)
                 .await;
         });
+        let avs_registry_service_chaincaller = AvsRegistryServiceChainCaller::new(
+            avs_registry_reader,
+            operators_info_service,
+        );
+        let bls_agg_service = BlsAggregatorService::new(
+            avs_registry_service_chaincaller,
+            get_logger()
+        );
+        let quorum_nums = Bytes::from([0x00]);
+        let quorum_threshold_percentages: QuorumThresholdPercentages = vec![0];
+        let time_to_expiry = Duration::from_secs(100000);
+
+
         let mut hasher = Sha256::new();
         let mut signatures = HashMap::new();
         loop {
@@ -198,7 +213,14 @@ impl<E: Clock> Orchestrator<E> {
 
                         // Insert signature
                         round.insert(contributor, signature);
-
+                        let task_metadata = TaskMetadata::new(
+                            msg.round as u32,
+                            provider.get_block_number().await.unwrap() as u64,
+                            quorum_nums.to_vec(),
+                            quorum_threshold_percentages.clone(),
+                            time_to_expiry
+                        );
+                    
                         // Check if should aggregate
                         if round.len() < self.t {
                             continue;
