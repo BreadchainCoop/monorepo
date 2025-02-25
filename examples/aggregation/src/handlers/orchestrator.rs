@@ -2,7 +2,7 @@ use crate::bn254::{G1PublicKey, PublicKey, Signature};
 use commonware_cryptography::{Hasher, Scheme, Sha256};
 use commonware_macros::select;
 use commonware_p2p::{Receiver, Sender};
-use commonware_runtime::Clock;
+use commonware_runtime::{tokio, Clock};
 use commonware_utils::hex;
 use eigen_crypto_bls::{convert_to_g1_point, convert_to_g2_point};
 use prost::Message;
@@ -10,12 +10,39 @@ use std::{
     collections::HashMap,
     time::{Duration, UNIX_EPOCH},
 };
+use eigen_client_avsregistry::reader::{AvsRegistryChainReader, AvsRegistryReader};
 use tracing::info;
+use eigen_logging::{get_logger, init_logger};
+use alloy_provider::{Provider,RootProvider};
 
 use crate::{
     bn254::{self, Bn254},
     handlers::wire,
 };
+use eigen_services_operatorsinfo::operator_info::OperatorInfoService;
+use eigen_services_blsaggregation::bls_agg::{BlsAggregatorService, TaskMetadata, TaskSignature};
+use eigen_services_avsregistry::chaincaller::AvsRegistryServiceChainCaller;
+use eigen_services_operatorsinfo::operatorsinfo_inmemory::OperatorInfoServiceInMemory;
+use eigen_types::{
+    avs::{TaskIndex, TaskResponseDigest, SignedTaskResponseDigest},
+    operator::QuorumThresholdPercentages,
+};
+use alloy_primitives::{Address, Bytes, FixedBytes, address};
+use alloy_network::Ethereum;
+use std::str::FromStr;
+use std::sync::Arc;
+use ark_ec::AffineRepr;
+use ark_ff::PrimeField;
+use std::env;
+use dotenv::dotenv;
+use axum::{
+    routing::post,
+    Json,
+    Router,
+    extract::State,
+};
+use url::Url;
+use tokio_util::sync::CancellationToken;
 
 pub struct Orchestrator<E: Clock> {
     runtime: E,
@@ -56,6 +83,49 @@ impl<E: Clock> Orchestrator<E> {
         mut sender: impl Sender,
         mut receiver: impl Receiver<PublicKey = PublicKey>,
     ) {
+        init_logger(eigen_logging::log_level::LogLevel::Info);
+
+        // Get RPC URLs from env
+        let http_endpoint = env::var("RPC_URL")
+            .expect("RPC_URL must be set");
+        let ws_endpoint = env::var("WEBSOCKET_RPC_URL")
+            .expect("WEBSOCKET_RPC_URL must be set");
+        let registry_coordinator_address: Address = Address::from_str(
+            &env::var("REGISTRY_COORDINATOR_ADDRESS")
+                .expect("REGISTRY_COORDINATOR_ADDRESS must be set")
+        ).unwrap();
+        let operator_state_retriever_address: Address = Address::from_str(
+            &env::var("OPERATOR_STATE_RETRIEVER_ADDRESS")
+                .expect("OPERATOR_STATE_RETRIEVER_ADDRESS must be set")
+        ).unwrap();
+    
+        // Initialize provider and get current block
+        let provider: RootProvider<_, Ethereum> = RootProvider::new_http(Url::parse(&http_endpoint).unwrap());
+        let current_block_number = provider.get_block_number().await.unwrap();
+    
+        // Initialize AVS registry reader
+        let avs_registry_reader = AvsRegistryChainReader::new(
+            get_logger().clone(),
+            registry_coordinator_address,
+            operator_state_retriever_address,
+            http_endpoint.clone(),
+        ).await.unwrap();
+    
+        // Initialize operator info service
+        let operators_info_service = OperatorInfoServiceInMemory::new(
+            get_logger(),
+            avs_registry_reader.clone(),
+            ws_endpoint,
+        ).await.unwrap().0;
+    
+        // Start the operator info service
+        let token = CancellationToken::new();
+        let operators_info_service_clone = operators_info_service.clone();
+        tokio::spawn(async move {
+            let _ = operators_info_service_clone
+                .start_service(&token, current_block_number-1000, current_block_number)
+                .await;
+        });
         let mut hasher = Sha256::new();
         let mut signatures = HashMap::new();
         loop {
