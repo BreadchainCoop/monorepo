@@ -62,13 +62,10 @@ use alloy_primitives::{address, hex_literal::hex};
 // Unique namespace to avoid message replay attacks.
 const APPLICATION_NAMESPACE: &[u8] = b"_COMMONWARE_AGGREGATION_";
 
-fn get_signer(key: u64) -> Bn254 {
-    println!("key: {}", key);
-    let scalar = hex::decode(key.to_string()).expect("Invalid hex string for private key");
-    let fr = Fr::from_be_bytes_mod_order(&scalar);
+fn get_signer(key: &str) -> Bn254 {
+    let fr = Fr::from_str(key).expect("Invalid decimal string for private key");
     let key = PrivateKey::from(fr);
-    let signer = <Bn254 as Scheme>::from(key).expect("Failed to create signer");
-    return signer;
+    <Bn254 as Scheme>::from(key).expect("Failed to create signer")
 }
 
 fn main() {
@@ -92,14 +89,14 @@ fn main() {
                 .long("participants")
                 .required(true)
                 .value_delimiter(',')
-                .value_parser(value_parser!(u64))
+                .value_parser(value_parser!(String))
                 .help("All participants (orchestrator and contributors)"),
         )
         .arg(
             Arg::new("orchestrator")
                 .long("orchestrator")
                 .required(false)
-                .value_parser(value_parser!(u64))
+                .value_parser(value_parser!(String))
                 .help("If set, run as a contributor otherwise run as the orchestrator"),
         )
         .arg(
@@ -107,7 +104,7 @@ fn main() {
                 .long("contributors")
                 .required(true)
                 .value_delimiter(',')
-                .value_parser(value_parser!(u64))
+                .value_parser(value_parser!(String))
                 .help("contributors"),
         )
         .get_matches();
@@ -119,26 +116,21 @@ fn main() {
 
     // Configure my identity
     let me = matches
-        .get_one::<String>("me")
-        .expect("Please provide identity");
+    .get_one::<String>("me")
+    .expect("Please provide identity");
     let parts = me.split('@').collect::<Vec<&str>>();
     if parts.len() != 2 {
         panic!("Identity not well-formed");
     }
-    let key = parts[0].parse::<u64>().expect("Key not well-formed");
-    // let signer = Bn254::from_seed(key);
-
-
-    // tracing::info!(key = ?signer.public_key(), "loaded signer");
-    // let scalar = hex::decode(parts[0]).expect("Invalid hex string for private key");
-    // let fr = Fr::from_be_bytes_mod_order(&scalar);
-    // let key = PrivateKey::from(fr);
-    
-    // let signer = <Bn254 as Scheme>::from(key).expect("Failed to create signer");
+    let key = parts[0];
     let signer = get_signer(key);
     tracing::info!(key = ?signer.public_key(), "loaded signer");
     let public_key = signer.public_g1();
-    print!("{}", public_key);
+    // let g1_point = convert_to_g1_point(&public_key);
+    // println!("public key (G1 coordinates): ({}, {})", g1_point.unwrap().X, g1_point.unwrap().Y);
+    println!("key: {}", key);
+    println!("parts: {:?}", parts);
+    println!("me: {:?}", me);
     // std::process::exit(0);
 
     // Configure my port
@@ -148,9 +140,8 @@ fn main() {
     // Configure allowed peers
     let mut recipients = Vec::new();
     let participants = matches
-        .get_many::<u64>("participants")
-        .expect("Please provide allowed keys")
-        .copied();
+        .get_many::<String>("participants")
+        .expect("Please provide allowed keys");
     if participants.len() == 0 {
         panic!("Please provide at least one participant");
     }
@@ -166,10 +157,7 @@ fn main() {
     if let Some(bootstrappers) = bootstrappers {
         for bootstrapper in bootstrappers {
             let parts = bootstrapper.split('@').collect::<Vec<&str>>();
-            let bootstrapper_key = parts[0]
-                .parse::<u64>()
-                .expect("Bootstrapper key not well-formed");
-            let verifier = get_signer(bootstrapper_key).public_key();
+            let verifier = get_signer(parts[0]).public_key();
             let bootstrapper_address =
                 SocketAddr::from_str(parts[1]).expect("Bootstrapper address not well-formed");
             bootstrapper_identities.push((verifier, bootstrapper_address));
@@ -201,9 +189,8 @@ fn main() {
         let mut contributors = Vec::new();
         let mut contributors_map = HashMap::new();
         let participants = matches
-            .get_many::<u64>("contributors")
-            .expect("Please provide contributors")
-            .copied();
+            .get_many::<String>("contributors")
+            .expect("Please provide contributors");
         if participants.len() == 0 {
             panic!("Please provide at least one contributor");
         }
@@ -223,7 +210,7 @@ fn main() {
         const DEFAULT_MESSAGE_BACKLOG: usize = 256;
         const COMPRESSION_LEVEL: Option<i32> = Some(3);
         const AGGREGATION_FREQUENCY: Duration = Duration::from_secs(10);
-        if let Some(orchestrator) = matches.get_one::<u64>("orchestrator") {
+        if let Some(orchestrator) = matches.get_one::<String>("orchestrator") {
             // Create contributor
             let (sender, receiver) = network.register(
                 0,
@@ -231,7 +218,7 @@ fn main() {
                 DEFAULT_MESSAGE_BACKLOG,
                 COMPRESSION_LEVEL,
             );
-            let orchestrator = get_signer(*orchestrator).public_key();
+            let orchestrator = get_signer(orchestrator).public_key();
             let contributor =
                 handlers::Contributor::new(orchestrator, signer, contributors, threshold as usize);
             runtime.spawn("contributor", contributor.run(sender, receiver));
