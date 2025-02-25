@@ -1662,6 +1662,7 @@ checksum = "d3fd119d74b830634cea2a0f58bbd0d54540518a14397557951e79340abc28c0"
 name = "commonware-aggregation"
 version = "0.0.1"
 dependencies = [
+ "alloy-primitives",
  "ark-bn254",
  "ark-ec",
  "ark-ff 0.5.0",
@@ -1681,6 +1682,8 @@ dependencies = [
  "prost",
  "prost-build",
  "rand",
+ "serde",
+ "serde_yaml",
  "tracing",
  "tracing-subscriber 0.3.18",
 ]
@@ -4594,6 +4597,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_yaml"
+version = "0.9.34+deprecated"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a8b1a1a2ebf674015cc02edccce75287f1a0130d394307b36743c2f5d504b47"
+dependencies = [
+ "indexmap",
+ "itoa",
+ "ryu",
+ "serde",
+ "unsafe-libyaml",
+]
+
+[[package]]
 name = "sha1"
 version = "0.10.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5362,6 +5378,12 @@ dependencies = [
  "crypto-common",
  "subtle",
 ]
+
+[[package]]
+name = "unsafe-libyaml"
+version = "0.2.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "673aac59facbab8a9007c7f6108d11f63b603f7cabff99fabf650fea5c32b861"
 
 [[package]]
 name = "untrusted"
