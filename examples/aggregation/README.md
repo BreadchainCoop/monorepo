@@ -8,20 +8,20 @@ _To run this example, you must first install [Rust](https://www.rust-lang.org/to
 
 ## Orchestrator
 ```bash
-cargo run --release -- --me 69@3000 --participants 69,11,22,33 --contributors 11,22,33
+cargo run --release -- --key-file keys/orchestrator.yaml --port 3000 --participants keys/orchestrator.yaml,keys/contributor1.yaml,keys/contributor2.yaml,keys/contributor3.yaml --contributors keys/contributor1.yaml,keys/contributor2.yaml,keys/contributor3.yaml
 ```
 
 ## Contributor 1
 ```bash
-cargo run --release -- --bootstrappers 69@127.0.0.1:3000 --me 11@3001 --participants 69,11,22,33  --orchestrator 69 --contributors 11,22,33
+cargo run --release -- --bootstrappers 69@127.0.0.1:3000 --key-file keys/contributor1.yaml --port 3001 --participants keys/orchestrator.yaml,keys/contributor1.yaml,keys/contributor2.yaml,keys/contributor3.yaml --orchestrator keys/orchestrator.yaml --contributors keys/contributor1.yaml,keys/contributor2.yaml,keys/contributor3.yaml
 ```
 
 ## Contributor 2
 ```bash
-cargo run --release -- --bootstrappers 69@127.0.0.1:3000 --me 22@3002 --participants 69,11,22,33  --orchestrator 69 --contributors 11,22,33
+cargo run --release -- --bootstrappers 69@127.0.0.1:3000 --key-file keys/contributor2.yaml --port 3002 --participants keys/orchestrator.yaml,keys/contributor1.yaml,keys/contributor2.yaml,keys/contributor3.yaml --orchestrator keys/orchestrator.yaml --contributors keys/contributor1.yaml,keys/contributor2.yaml,keys/contributor3.yaml
 ```
 
 ## Contributor 3
 ```bash
-cargo run --release -- --bootstrappers 69@127.0.0.1:3000 --me 33@3003 --participants 69,11,22,33  --orchestrator 69 --contributors 11,22,33
+cargo run --release -- --bootstrappers 69@127.0.0.1:3000 --key-file keys/contributor3.yaml --port 3003 --participants keys/orchestrator.yaml,keys/contributor1.yaml,keys/contributor2.yaml,keys/contributor3.yaml --orchestrator keys/orchestrator.yaml --contributors keys/contributor1.yaml,keys/contributor2.yaml,keys/contributor3.yaml
 ```
