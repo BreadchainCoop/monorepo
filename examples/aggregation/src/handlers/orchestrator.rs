@@ -12,8 +12,10 @@ use std::{
     collections::HashMap,
     time::{Duration, UNIX_EPOCH},
     str::FromStr,
+    env,
 };
 use tracing::info;
+use dotenv::dotenv;
 
 use alloy_provider::{Provider,RootProvider};
 use alloy_network::Ethereum;
@@ -31,6 +33,8 @@ pub struct Orchestrator<E: Clock> {
     g1_map: HashMap<PublicKey, G1PublicKey>, // g2 (PublicKey) -> g1 (PublicKey)
     ordered_contributors: HashMap<PublicKey, usize>,
     t: usize,
+    registry_coordinator_address: String,
+    target_address: String,
 }
 
 impl<E: Clock> Orchestrator<E> {
@@ -42,11 +46,19 @@ impl<E: Clock> Orchestrator<E> {
         g1_map: HashMap<PublicKey, G1PublicKey>,
         t: usize,
     ) -> Self {
+        dotenv().ok();
+        
         contributors.sort();
         let mut ordered_contributors = HashMap::new();
         for (idx, contributor) in contributors.iter().enumerate() {
             ordered_contributors.insert(contributor.clone(), idx);
         }
+
+        let registry_coordinator_address = env::var("REGISTRY_COORDINATOR_ADDRESS")
+            .expect("REGISTRY_COORDINATOR_ADDRESS must be set in .env");
+        let target_address = env::var("TARGET_ADDRESS")
+            .expect("TARGET_ADDRESS must be set in .env");
+
         Self {
             runtime,
             signer,
@@ -55,6 +67,8 @@ impl<E: Clock> Orchestrator<E> {
             g1_map,
             ordered_contributors,
             t,
+            registry_coordinator_address,
+            target_address,
         }
     }
 
@@ -67,14 +81,17 @@ impl<E: Clock> Orchestrator<E> {
         let mut signatures = HashMap::new();
         let http_endpoint = "http://localhost:8545"; // "https://ethereum-holesky.publicnode.com";
         let provider: RootProvider<_, Ethereum> = RootProvider::new_http(Url::parse(&http_endpoint).unwrap());
+        
+        info!(
+            registry_coordinator = self.registry_coordinator_address,
+            target = self.target_address,
+            "Starting orchestrator with addresses"
+        );
+
         loop {
             // Generate payload
             let current_block_num = provider.get_block_number().await.unwrap();
-            // let current = self.runtime.current();
-            // let current = current.duration_since(UNIX_EPOCH).unwrap().as_secs();
-            // hasher.update(&current_block_num.to_be_bytes());
-            // let timestamp_hash = hasher.finalize();
-            
+
             // Sign the timestamp hash with BN254
             let payload = self.signer.sign(None, &current_block_num.to_be_bytes());
             info!(round = current_block_num, msg = hex(&payload), "generated and signed message");
