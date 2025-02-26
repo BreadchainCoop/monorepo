@@ -1,4 +1,4 @@
-ause crate::bn254::{G1PublicKey, PublicKey, Signature, Bn254, PrivateKey};
+use crate::bn254::{G1PublicKey, PublicKey, Signature, Bn254, PrivateKey};
 use ark_bn254::Fr;
 use ark_ff::PrimeField;
 use commonware_cryptography::{Hasher, Scheme, Sha256};
