@@ -26,7 +26,6 @@ use crate::{
     handlers::wire,
 };
 use alloy_primitives::U256;
-use alloy_provider::{Provider, ProviderBuilder};
 
 pub struct Orchestrator<E: Clock> {
     runtime: E,
