@@ -19,6 +19,7 @@ use dotenv::dotenv;
 
 use alloy_provider::{Provider,RootProvider};
 use alloy_network::Ethereum;
+use alloy_primitives::Address;
 use url::Url;
 use crate::{
     bn254,
@@ -33,8 +34,6 @@ pub struct Orchestrator<E: Clock> {
     g1_map: HashMap<PublicKey, G1PublicKey>, // g2 (PublicKey) -> g1 (PublicKey)
     ordered_contributors: HashMap<PublicKey, usize>,
     t: usize,
-    registry_coordinator_address: String,
-    target_address: String,
 }
 
 impl<E: Clock> Orchestrator<E> {
@@ -54,11 +53,6 @@ impl<E: Clock> Orchestrator<E> {
             ordered_contributors.insert(contributor.clone(), idx);
         }
 
-        let registry_coordinator_address = env::var("REGISTRY_COORDINATOR_ADDRESS")
-            .expect("REGISTRY_COORDINATOR_ADDRESS must be set in .env");
-        let target_address = env::var("TARGET_ADDRESS")
-            .expect("TARGET_ADDRESS must be set in .env");
-
         Self {
             runtime,
             signer,
@@ -67,8 +61,6 @@ impl<E: Clock> Orchestrator<E> {
             g1_map,
             ordered_contributors,
             t,
-            registry_coordinator_address,
-            target_address,
         }
     }
 
@@ -82,11 +74,17 @@ impl<E: Clock> Orchestrator<E> {
         let http_endpoint = "http://localhost:8545"; // "https://ethereum-holesky.publicnode.com";
         let provider: RootProvider<_, Ethereum> = RootProvider::new_http(Url::parse(&http_endpoint).unwrap());
         
-        info!(
-            registry_coordinator = self.registry_coordinator_address,
-            target = self.target_address,
-            "Starting orchestrator with addresses"
-        );
+        let registry_coordinator_address: Address = Address::from_str(
+            &env::var("REGISTRY_COORDINATOR_ADDRESS")
+                .expect("REGISTRY_COORDINATOR_ADDRESS must be set")
+        ).unwrap();
+        info!("Registry coordinator address: {}", registry_coordinator_address);
+
+        let target_address: Address = Address::from_str(
+            &env::var("TARGET_ADDRESS")
+                .expect("TARGET_ADDRESS must be set")
+        ).unwrap();
+        info!("Target address: {}", target_address);
 
         loop {
             // Generate payload
