@@ -1,4 +1,7 @@
 use crate::bn254::{G1PublicKey, PublicKey, Signature, Bn254, PrivateKey};
+use crate::bn254;
+use alloy::json_abi::Function;
+use alloy::sol_types::SolCall;
 use ark_bn254::Fr;
 use ark_ff::PrimeField;
 use commonware_cryptography::{Hasher, Scheme, Sha256};
@@ -16,15 +19,15 @@ use std::{
 };
 use tracing::info;
 use dotenv::dotenv;
-
-use alloy_provider::{Provider,RootProvider};
+use alloy::providers::{Provider, RootProvider};
 use alloy_network::Ethereum;
-use alloy_primitives::Address;
+use alloy_primitives::{Address, Bytes, U256, FixedBytes};
+use alloy::sol;
 use url::Url;
-use crate::{
-    bn254,
-    handlers::wire,
-};
+use crate::handlers::wire;
+use YourContract::yourFuncCall;
+use crate::bindings::votingcontract::VotingContract;
+
 
 pub struct Orchestrator<E: Clock> {
     runtime: E,
@@ -35,6 +38,14 @@ pub struct Orchestrator<E: Clock> {
     ordered_contributors: HashMap<PublicKey, usize>,
     t: usize,
 }
+
+sol! {
+    contract YourContract {
+        #[derive(Debug)]
+        function yourFunc(uint256 block_number, address contract_address, bytes4 function_sig, bytes storage_updates) public returns (bytes memory);
+    }
+}
+
 
 impl<E: Clock> Orchestrator<E> {
     pub fn new(
@@ -71,8 +82,6 @@ impl<E: Clock> Orchestrator<E> {
     ) {
         let mut hasher = Sha256::new();
         let mut signatures = HashMap::new();
-        let http_endpoint = "http://localhost:8545"; // "https://ethereum-holesky.publicnode.com";
-        let provider: RootProvider<_, Ethereum> = RootProvider::new_http(Url::parse(&http_endpoint).unwrap());
         
         let registry_coordinator_address: Address = Address::from_str(
             &env::var("REGISTRY_COORDINATOR_ADDRESS")
@@ -80,18 +89,36 @@ impl<E: Clock> Orchestrator<E> {
         ).unwrap();
         info!("Registry coordinator address: {}", registry_coordinator_address);
 
-        let target_address: Address = Address::from_str(
+        let contract_address = Address::from_str(
             &env::var("TARGET_ADDRESS")
                 .expect("TARGET_ADDRESS must be set")
         ).unwrap();
-        info!("Target address: {}", target_address);
+        info!("Target address: {}", contract_address);
+
+        let http_endpoint = env::var("HTTP_ENDPOINT")
+            .expect("HTTP_ENDPOINT must be set");
+        info!("HTTP endpoint: {}", http_endpoint);
+
+        let provider: RootProvider = RootProvider::new_http(Url::parse(&http_endpoint).unwrap());
 
         loop {
             // Generate payload
             let current_block_num = provider.get_block_number().await.unwrap();
-
+            let block_number = current_block_num;
+            let function_sig = Function::parse("writeExecuteVote(bytes32,(uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256),bytes,uint256,address,bytes4)").unwrap().selector();
+            let storage_updates = self.get_storage_updates(current_block_num).await.unwrap();
+            println!("storage_updates: {:?}", storage_updates);
+            let encoded = yourFuncCall {
+                block_number: U256::from(block_number),
+                contract_address,
+                function_sig,
+                storage_updates,
+            }.abi_encode();
+            let payload = encoded;
+            hasher.update(&payload);
+            let payload = hasher.finalize();
             // Sign the timestamp hash with BN254
-            let payload = self.signer.sign(None, &current_block_num.to_be_bytes());
+            let payload = self.signer.sign(None, &payload);
             info!(round = current_block_num, msg = hex(&payload), "generated and signed message");
 
             // Broadcast payload
@@ -205,5 +232,24 @@ impl<E: Clock> Orchestrator<E> {
                 }
             }
         }
+    }
+    pub async fn get_storage_updates(&self, block_number: u64) -> Result<Bytes, Box<dyn std::error::Error + Send + Sync>> {
+        // Convert the string to a Url
+        let url = Url::parse("http://localhost:8545").unwrap();
+        let provider: RootProvider = RootProvider::new_http(url);
+        println!("block_number: {:?}", block_number);
+
+        let contract_address: Address = Address::from_str(
+            &env::var("TARGET_ADDRESS")
+                .expect("TARGET_ADDRESS must be set")
+        ).unwrap();
+        info!("Target address: {}", contract_address);
+        
+        let contract = VotingContract::new(contract_address, provider);
+        
+        let call_return = contract.operatorExecuteVote(U256::from(block_number))
+            .call()
+            .await?;
+        Ok(call_return._0)
     }
 }

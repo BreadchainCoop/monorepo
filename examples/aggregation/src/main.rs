@@ -32,6 +32,7 @@
 
 mod bn254;
 mod handlers;
+mod bindings;
 
 use ark_ff::{Fp, PrimeField};
 use ark_bn254::Fr;
@@ -248,7 +249,7 @@ fn main() {
             let orchestrator_key = load_key_from_file(orchestrator_file);
             let orchestrator = get_signer(&orchestrator_key).public_key();
             let contributor =
-                handlers::Contributor::new(orchestrator, signer, contributors, threshold as usize);
+                handlers::Contributor::new(orchestrator, signer, contributors, threshold as usize, contributors_map.clone());
             runtime.spawn("contributor", contributor.run(sender, receiver));
         } else {
             let (sender, receiver) = network.register(
