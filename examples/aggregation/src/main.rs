@@ -259,6 +259,7 @@ fn main() {
             );
             let orchestrator = handlers::Orchestrator::new(
                 runtime.clone(),
+                signer,
                 AGGREGATION_FREQUENCY,
                 contributors,
                 contributors_map,

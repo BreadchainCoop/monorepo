@@ -5,9 +5,18 @@ Aggregate signatures from multiple contributors over the BN254 curve.
 # Usage (3 of 3 Threshold)
 
 _To run this example, you must first install [Rust](https://www.rust-lang.org/tools/install) and [protoc](https://grpc.io/docs/protoc-installation)._
+
+
+## Holesky (since its broken???)
+```bash
+anvil -f https://ethereum-holesky.publicnode.com --block-time 5
+```
+
+## For the rest of the cli's start with this
 ```bash 
 cd examples/aggregation
 ```
+
 ## Orchestrator
 ```bash
 cargo run --release -- --key-file keys/orchestrator.yaml --port 3000 --participants keys/orchestrator.yaml,keys/contributor1.yaml,keys/contributor2.yaml,keys/contributor3.yaml --contributors keys/contributor1.yaml,keys/contributor2.yaml,keys/contributor3.yaml
