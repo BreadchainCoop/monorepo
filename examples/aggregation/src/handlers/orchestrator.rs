@@ -20,9 +20,12 @@ use dotenv::dotenv;
 use alloy::providers::{Provider, RootProvider};
 use alloy_network::Ethereum;
 use alloy_primitives::Address;
+use alloy::sol;
 use url::Url;
 use crate::handlers::wire;
 use alloy_primitives::U256;
+use YourContract::yourFuncCall;
+
 
 pub struct Orchestrator<E: Clock> {
     runtime: E,
@@ -33,6 +36,14 @@ pub struct Orchestrator<E: Clock> {
     ordered_contributors: HashMap<PublicKey, usize>,
     t: usize,
 }
+
+sol! {
+    contract YourContract {
+        #[derive(Debug)]
+        function yourFunc(uint256 block_number, address contract_address, bytes4 function_sig, bytes storage_updates) public returns (bytes memory);
+    }
+}
+
 
 impl<E: Clock> Orchestrator<E> {
     pub fn new(
