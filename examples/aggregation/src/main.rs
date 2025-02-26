@@ -32,6 +32,7 @@
 
 mod bn254;
 mod handlers;
+mod bindings;
 
 use ark_ff::{Fp, PrimeField};
 use ark_bn254::Fr;

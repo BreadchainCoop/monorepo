@@ -4,26 +4,13 @@ use commonware_utils::hex;
 use prost::Message;
 use std::{collections::{HashMap, HashSet}, str::FromStr};
 use tracing::info;
-use YourContract::yourFuncCall;
-use alloy::{json_abi::Function, sol, sol_types::SolCall};
-use crate::bn254::{PublicKey, Signature, Bn254,aggregate_verify,aggregate_signatures};
+use alloy::{json_abi::Function, sol_types::SolCall};
+use crate::bn254::{PublicKey, Signature, Bn254, aggregate_verify, aggregate_signatures};
 use alloy_provider::{Provider, ProviderBuilder};
+use alloy_primitives::{Address, Bytes, U256, FixedBytes};
 
-use alloy_primitives::{Address, Bytes, U256,FixedBytes};
-
-sol! {
-    #[sol(abi)]
-    contract VotingContract {
-        function operatorExecuteVote(uint256 blockNumber) external view returns (bytes memory);
-    }
-}
-
-sol! {
-    contract YourContract {
-        #[derive(Debug)]
-        function yourFunc(uint256 block_number, address contract_address, bytes4 function_sig, bytes storage_updates) public returns (bytes memory);
-    }
-}
+// Import the generated binding for VotingContract
+use crate::bindings::votingcontract::VotingContract;
 
 use super::wire;
 
@@ -158,9 +145,9 @@ impl Contributor {
             println!("storage_updates: {:?}", storage_updates);
             println!("block_number: {:?}", block_number);
             println!("round: {:?}", round);
-            let encoded = yourFuncCall{ block_number: U256::from(block_number), contract_address, function_sig, storage_updates }.abi_encode();
+            // let encoded = yourFuncCall{ block_number: U256::from(block_number), contract_address, function_sig, storage_updates }.abi_encode();
             // Generate signature
-            let payload = encoded;
+            let payload = message.round.to_be_bytes();
             hasher.update(&payload);
             let payload = hasher.finalize();
             let signature = self.signer.sign(None, &payload);
@@ -187,17 +174,20 @@ impl Contributor {
             info!(round, "broadcast signature");
         }
     }
-    pub async fn get_storage_updates(&self ,block_number: u64) -> Result<(Bytes), Box<dyn std::error::Error + Send + Sync>> {
+
+    pub async fn get_storage_updates(&self, block_number: u64) -> Result<Bytes, Box<dyn std::error::Error + Send + Sync>> {
         let provider = ProviderBuilder::new()
             .on_builtin("http://localhost:8545")
             .await?;
         println!("block_number: {:?}", block_number);
         let contract_address = Address::from_str("0xFEDB17c4B3556d2D408C003D2e2cCeD28d4A9Cb3").unwrap();
-        let contract = VotingContract::VotingContractCalls::builder(contract_address, provider);
+        
+        // Use the binding to create a contract instance
+        let contract = VotingContract::new(contract_address, provider);
+        
         let call_return = contract.operatorExecuteVote(U256::from(block_number))
             .call()
             .await?;
         Ok(call_return._0)
-      
     }
 }
