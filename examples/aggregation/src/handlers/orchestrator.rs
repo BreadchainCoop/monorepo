@@ -70,9 +70,9 @@ impl<E: Clock> Orchestrator<E> {
         loop {
             // Generate payload
             let current_block_num = provider.get_block_number().await.unwrap();
-            let current = self.runtime.current();
+            // let current = self.runtime.current();
             // let current = current.duration_since(UNIX_EPOCH).unwrap().as_secs();
-            hasher.update(&current_block_num.to_be_bytes());
+            // hasher.update(&current_block_num.to_be_bytes());
             // let timestamp_hash = hasher.finalize();
             
             // Sign the timestamp hash with BN254
