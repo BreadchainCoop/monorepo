@@ -6,7 +6,7 @@ use prost::Message;
 use YourContract::yourFuncCall;
 use std::{collections::{HashMap, HashSet}, str::FromStr};
 use tracing::info;
-use alloy::{json_abi::Function, providers::RootProvider, sol, sol_types::SolCall};
+use alloy::{hex::ToHexExt, json_abi::Function, providers::RootProvider, sol, sol_types::SolCall};
 use crate::bn254::{self, aggregate_signatures, aggregate_verify, Bn254, G1PublicKey, PublicKey, Signature};
 use alloy_primitives::{Address, Bytes, U256, FixedBytes};
 use url;
@@ -111,10 +111,12 @@ impl Contributor {
                     function_sig,
                     storage_updates,
                 }.abi_encode();
+                println!("encoded: {:?}", encoded.encode_hex());
                 // Generate signature
                 let payload = encoded;
                 hasher.update(&payload);
                 let payload = hasher.finalize();
+                println!("hash: {:?}", payload);
                 if !Bn254::verify(None, &payload, &s, &signature) {
                     continue;
                 }
@@ -162,6 +164,7 @@ impl Contributor {
                             asig_y = ?asig.Y,
                             "aggregated signatures",
                         );
+                        println!("Partcipating len: {:?}", participating.len());
                         println!(r#"[eth verification] cast c -r https://eth.llamarpc.com 0xb7ba8bbc36AA5684fC44D02aD666dF8E23BEEbF8 "trySignatureAndApkVerification(bytes32,(uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256))" "{:?}" "({:?},{:?})" "({:?},{:?})" "({:?},{:?})""#, hex(&payload), apk.X, apk.Y, apk_g2.X, apk_g2.Y, asig.X, asig.Y);
                 info!(
                     round,
