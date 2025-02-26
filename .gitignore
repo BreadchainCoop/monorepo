@@ -2,5 +2,5 @@
 *.DS_Store
 /target
 *.vscode
-Cargo.lock
 .env
+Cargo.lock
