@@ -124,6 +124,8 @@ impl Contributor {
                 hasher.update(&payload);
                 let payload = hasher.finalize();
                 println!("hash: {:?}", payload);
+                println!("round: {:?}", round);
+                println!("msg: {:?}", hex(&payload));
                 if !Bn254::verify(None, &payload, &s, &signature) {
                     continue;
                 }
@@ -194,7 +196,10 @@ impl Contributor {
                 continue;
             }
             let block_number = message.round;
-            let contract_address = Address::from_str("0xFEDB17c4B3556d2D408C003D2e2cCeD28d4A9Cb3").unwrap();
+            let contract_address = Address::from_str(
+                &env::var("TARGET_ADDRESS")
+                    .expect("TARGET_ADDRESS must be set")
+            ).unwrap();
             let function_sig = Function::parse("writeExecuteVote(bytes32,(uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256),bytes,uint256,address,bytes4)").unwrap().selector();
             let storage_updates = self.get_storage_updates(block_number).await.unwrap();
             println!("storage_updates: {:?}", storage_updates);
@@ -207,10 +212,12 @@ impl Contributor {
                 storage_updates,
             }.abi_encode();
             // Generate signature
-            let payload = encoded;
+            let payload = encoded[4..].to_vec(); // Skip first 4 bytes;
             hasher.update(&payload);
             let payload = hasher.finalize();
+            info!("Generating signature for round: {}, payload hash: {}", round, hex(&payload));
             let signature = self.signer.sign(None, &payload);
+            info!("Generated signature for round: {}", round);
 
             // Store signature
             signatures
@@ -227,6 +234,9 @@ impl Contributor {
             }
             .encode_to_vec()
             .into();
+            info!("Sending signature for round: {}", round);
+            
+            // Broadcast to all (including orchestrator)
             sender
                 .send(commonware_p2p::Recipients::All, message, true)
                 .await
@@ -237,10 +247,15 @@ impl Contributor {
 
     pub async fn get_storage_updates(&self, block_number: u64) -> Result<Bytes, Box<dyn std::error::Error + Send + Sync>> {
         // Convert the string to a Url
-        let url = Url::parse("http://localhost:8545").unwrap();
+        let http_endpoint = env::var("HTTP_ENDPOINT")
+            .expect("HTTP_ENDPOINT must be set");
+        let url = Url::parse(&http_endpoint).unwrap();
         let provider: RootProvider = RootProvider::new_http(url);
         println!("block_number: {:?}", block_number);
-        let contract_address = Address::from_str("0xFEDB17c4B3556d2D408C003D2e2cCeD28d4A9Cb3").unwrap();
+        let contract_address = Address::from_str(
+            &env::var("TARGET_ADDRESS")
+                .expect("TARGET_ADDRESS must be set")
+        ).unwrap();
         
         let contract = VotingContract::new(contract_address, provider);
         

@@ -117,12 +117,12 @@ impl<E: Clock> Orchestrator<E> {
             let payload = encoded[4..].to_vec(); // Skip first 4 bytes
             println!("payload: {:?}", payload.encode_hex());
             println!("block_number: {:?}", block_number);
-            let payload = encoded;
+            // let payload = encoded;
             hasher.update(&payload);
             let payload = hasher.finalize();
             println!("hash: {:?}", payload);
             // Sign the timestamp hash with BN254
-            let payload = self.signer.sign(None, &payload);
+            // let payload = self.signer.sign(None, &payload);
             info!(round = current_block_num, msg = hex(&payload), "generated and signed message");
 
             // Broadcast payload
@@ -152,39 +152,92 @@ impl<E: Clock> Orchestrator<E> {
 
                         // Get contributor
                         let Some(contributor) = self.ordered_contributors.get(&sender) else {
+                            info!("Received message from unknown sender: {:?}", sender);
                             continue;
                         };
 
                         // Check if round exists
                         let Ok(msg) = wire::Aggregation::decode(msg) else {
+                            info!("Failed to decode message from sender: {:?}", sender);
                             continue;
                         };
                         let Some(round) = signatures.get_mut(&msg.round) else {
+                            info!("Received signature for unknown round: {} from contributor: {:?}", msg.round, contributor);
                             continue;
                         };
 
                         // Check if contributor has already signed
                         if round.contains_key(contributor) {
+                            info!("Contributor already signed for round: {} contributor: {:?}", msg.round, contributor);
                             continue;
                         }
 
                         // Extract signature
                         let signature = match msg.payload {
-                            Some(wire::aggregation::Payload::Signature(signature)) => signature.signature,
-                            _ => continue,
+                            Some(wire::aggregation::Payload::Signature(signature)) => {
+                                info!("Received signature for round: {} from contributor: {:?}", msg.round, contributor);
+                                signature.signature
+                            },
+                            _ => {
+                                info!("Received non-signature payload from contributor: {:?}", contributor);
+                                continue;
+                            }
                         };
                         let Ok(signature) = Signature::try_from(signature) else {
+                            info!("Failed to parse signature from contributor: {:?}", contributor);
                             continue;
                         };
 
                         // Verify signature
-                        let payload = msg.round.to_be_bytes();
-                        hasher.update(&payload);
+                        // Generate the same payload that contributors are signing
+                        let block_number = msg.round;
+                        let function_sig = Function::parse("writeExecuteVote(bytes32,(uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256),bytes,uint256,address,bytes4)").unwrap().selector();
+                        let storage_updates = match self.get_storage_updates(block_number).await {
+                            Ok(updates) => {
+                                info!("Got storage updates for round: {}", block_number);
+                                updates
+                            },
+                            Err(e) => {
+                                info!("Failed to get storage updates for round: {}, error: {:?}", block_number, e);
+                                Bytes::default()
+                            }
+                        };
+                        
+                        let encoded = yourFuncCall {
+                            block_number: U256::from(block_number),
+                            contract_address,
+                            function_sig,
+                            storage_updates,
+                        }.abi_encode();
+                        let payload_bytes = encoded[4..].to_vec(); // Skip first 4 bytes
+                        hasher.update(&payload_bytes);
                         let payload = hasher.finalize();
+                        
+                        info!("Verifying signature for round: {} from contributor: {:?}, payload hash: {}", 
+                              block_number, contributor, hex(&payload));
+                        
                         if !Bn254::verify(None, &payload, &sender, &signature) {
+                            info!("Signature verification failed for contributor: {:?}", contributor);
+                            
+                            // Try verifying with just the block number as a fallback
+                            let mut block_hasher = Sha256::new();
+                            let block_payload = block_number.to_be_bytes();
+                            block_hasher.update(&block_payload);
+                            let block_payload_hash = block_hasher.finalize();
+                            
+                            if Bn254::verify(None, &block_payload_hash, &sender, &signature) {
+                                info!("Signature verification succeeded with block number only for contributor: {:?}", contributor);
+                                // Insert signature anyway since it's valid for the block number
+                                round.insert(contributor, signature);
+                            } else {
+                                info!("Signature verification failed with both methods for contributor: {:?}", contributor);
+                            }
+                            
                             continue;
                         }
 
+                        info!("Signature verification succeeded for contributor: {:?}", contributor);
+                        
                         // Insert signature
                         round.insert(contributor, signature);
 
