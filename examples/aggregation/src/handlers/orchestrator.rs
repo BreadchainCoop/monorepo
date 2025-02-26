@@ -4,7 +4,7 @@ use ark_ff::PrimeField;
 use commonware_cryptography::{Hasher, Scheme, Sha256};
 use commonware_macros::select;
 use commonware_p2p::{Receiver, Sender};
-use commonware_runtime::Clock;
+use commonware_runtime::{tokio, Clock};
 use commonware_utils::hex;
 use eigen_crypto_bls::{convert_to_g1_point, convert_to_g2_point};
 use prost::Message;
@@ -14,19 +14,48 @@ use std::{
     str::FromStr,
     env,
 };
+use eigen_client_avsregistry::reader::{AvsRegistryChainReader, AvsRegistryReader};
 use tracing::info;
 use dotenv::dotenv;
-
 use alloy_provider::{Provider,RootProvider};
 use alloy_network::Ethereum;
 use alloy_primitives::Address;
 use url::Url;
+use eigen_logging::{get_logger, init_logger};
+use commonware_runtime::{
+    Runner, Spawner,
+};
+
 use crate::{
     bn254,
     handlers::wire,
 };
+use eigen_services_operatorsinfo::operator_info::OperatorInfoService;
+use eigen_services_blsaggregation::bls_agg::{BlsAggregatorService, TaskMetadata, TaskSignature};
+use eigen_services_avsregistry::chaincaller::AvsRegistryServiceChainCaller;
+use eigen_services_operatorsinfo::operatorsinfo_inmemory::OperatorInfoServiceInMemory;
+use eigen_types::{
+    avs::{TaskIndex, TaskResponseDigest, SignedTaskResponseDigest},
+    operator::QuorumThresholdPercentages,
+};
+use alloy_primitives::{Address, Bytes, FixedBytes, address};
+use alloy_network::Ethereum;
+use std::str::FromStr;
+use std::sync::Arc;
+use ark_ec::AffineRepr;
+use ark_ff::PrimeField;
+use std::env;
+use dotenv::dotenv;
+use axum::{
+    routing::post,
+    Json,
+    Router,
+    extract::State,
+};
+use url::Url;
+use tokio_util::sync::CancellationToken;
 
-pub struct Orchestrator<E: Clock> {
+pub struct Orchestrator<E: Clock + Spawner> {
     runtime: E,
     signer: Bn254,
     aggregation_frequency: Duration,
@@ -36,7 +65,7 @@ pub struct Orchestrator<E: Clock> {
     t: usize,
 }
 
-impl<E: Clock> Orchestrator<E> {
+impl<E: Clock + Spawner> Orchestrator<E> {
     pub fn new(
         runtime: E,
         signer: Bn254,
@@ -69,6 +98,62 @@ impl<E: Clock> Orchestrator<E> {
         mut sender: impl Sender,
         mut receiver: impl Receiver<PublicKey = PublicKey>,
     ) {
+        init_logger(eigen_logging::log_level::LogLevel::Info);
+
+        // Get RPC URLs from env
+        let http_endpoint = env::var("RPC_URL")
+            .expect("RPC_URL must be set");
+        let ws_endpoint = env::var("WEBSOCKET_RPC_URL")
+            .expect("WEBSOCKET_RPC_URL must be set");
+        let registry_coordinator_address: Address = Address::from_str(
+            &env::var("REGISTRY_COORDINATOR_ADDRESS")
+                .expect("REGISTRY_COORDINATOR_ADDRESS must be set")
+        ).unwrap();
+        let operator_state_retriever_address: Address = Address::from_str(
+            &env::var("OPERATOR_STATE_RETRIEVER_ADDRESS")
+                .expect("OPERATOR_STATE_RETRIEVER_ADDRESS must be set")
+        ).unwrap();
+    
+        // Initialize provider and get current block
+        let provider: RootProvider<_, Ethereum> = RootProvider::new_http(Url::parse(&http_endpoint).unwrap());
+        let current_block_number = provider.get_block_number().await.unwrap();
+    
+        // Initialize AVS registry reader
+        let avs_registry_reader = AvsRegistryChainReader::new(
+            get_logger().clone(),
+            registry_coordinator_address,
+            operator_state_retriever_address,
+            http_endpoint.clone(),
+        ).await.unwrap();
+    
+        // Initialize operator info service
+        let operators_info_service = OperatorInfoServiceInMemory::new(
+            get_logger(),
+            avs_registry_reader.clone(),
+            ws_endpoint,
+        ).await.unwrap().0;
+    
+        // Start the operator info service
+        let token = CancellationToken::new();
+        let operators_info_service_clone = operators_info_service.clone();
+        self.runtime.spawn("operator_info_service", async move {
+            let _ = operators_info_service_clone
+                .start_service(&token, current_block_number-1000, current_block_number)
+                .await;
+        });
+        let avs_registry_service_chaincaller = AvsRegistryServiceChainCaller::new(
+            avs_registry_reader,
+            operators_info_service,
+        );
+        let bls_agg_service = BlsAggregatorService::new(
+            avs_registry_service_chaincaller,
+            get_logger()
+        );
+        let quorum_nums = Bytes::from([0x00]);
+        let quorum_threshold_percentages: QuorumThresholdPercentages = vec![0];
+        let time_to_expiry = Duration::from_secs(100000);
+
+
         let mut hasher = Sha256::new();
         let mut signatures = HashMap::new();
         let http_endpoint = "http://localhost:8545"; // "https://ethereum-holesky.publicnode.com";
@@ -156,7 +241,14 @@ impl<E: Clock> Orchestrator<E> {
 
                         // Insert signature
                         round.insert(contributor, signature);
-
+                        let task_metadata = TaskMetadata::new(
+                            msg.round as u32,
+                            provider.get_block_number().await.unwrap() as u64,
+                            quorum_nums.to_vec(),
+                            quorum_threshold_percentages.clone(),
+                            time_to_expiry
+                        );
+                    
                         // Check if should aggregate
                         if round.len() < self.t {
                             continue;
