@@ -1,5 +1,7 @@
 use crate::bn254::{G1PublicKey, PublicKey, Signature, Bn254, PrivateKey};
 use crate::bn254;
+use alloy::json_abi::Function;
+use alloy::sol_types::SolCall;
 use ark_bn254::Fr;
 use ark_ff::PrimeField;
 use commonware_cryptography::{Hasher, Scheme, Sha256};
@@ -89,16 +91,21 @@ impl<E: Clock> Orchestrator<E> {
         ).unwrap();
         info!("Registry coordinator address: {}", registry_coordinator_address);
 
-        let target_address: Address = Address::from_str(
-            &env::var("TARGET_ADDRESS")
-                .expect("TARGET_ADDRESS must be set")
-        ).unwrap();
-        info!("Target address: {}", target_address);
 
         loop {
             // Generate payload
             let current_block_num = provider.get_block_number().await.unwrap();
-
+            let block_number = current_block_num;
+            let contract_address = Address::from_str("0xFEDB17c4B3556d2D408C003D2e2cCeD28d4A9Cb3").unwrap();
+            let function_sig = Function::parse("writeExecuteVote(bytes32,(uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256),bytes,uint256,address,bytes4)").unwrap().selector();
+            let storage_updates = self.get_storage_updates(current_block_num).await.unwrap();
+            let encoded = yourFuncCall {
+                block_number: U256::from(block_number),
+                contract_address,
+                function_sig,
+                storage_updates,
+            }.abi_encode();
+            
             // Sign the timestamp hash with BN254
             let payload = self.signer.sign(None, &current_block_num.to_be_bytes());
             info!(round = current_block_num, msg = hex(&payload), "generated and signed message");
@@ -220,7 +227,12 @@ impl<E: Clock> Orchestrator<E> {
         let url = Url::parse("http://localhost:8545").unwrap();
         let provider: RootProvider = RootProvider::new_http(url);
         println!("block_number: {:?}", block_number);
-        let contract_address = Address::from_str("0xFEDB17c4B3556d2D408C003D2e2cCeD28d4A9Cb3").unwrap();
+
+        let contract_address: Address = Address::from_str(
+            &env::var("TARGET_ADDRESS")
+                .expect("TARGET_ADDRESS must be set")
+        ).unwrap();
+        info!("Target address: {}", contract_address);
         
         let contract = VotingContract::new(contract_address, provider);
         
