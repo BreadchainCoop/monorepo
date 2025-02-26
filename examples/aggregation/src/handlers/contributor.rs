@@ -1,4 +1,3 @@
-use crate::{bindings::votingcontract::VotingContract::VotingContractInstance, bn254::{self, Bn254, PublicKey, Signature}};
 use commonware_cryptography::{Hasher, Scheme, Sha256};
 use commonware_p2p::{Receiver, Sender};
 use commonware_utils::hex;

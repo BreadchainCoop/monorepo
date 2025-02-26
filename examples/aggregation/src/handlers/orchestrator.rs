@@ -25,7 +25,6 @@ use crate::{
     bn254,
     handlers::wire,
 };
-use crate::bindings::votingcontract::VotingContractInstance;
 use alloy_primitives::U256;
 use alloy_provider::{Provider, ProviderBuilder};
 
