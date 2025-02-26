@@ -6,7 +6,7 @@ use std::{collections::{HashMap, HashSet}, str::FromStr};
 use tracing::info;
 use YourContract::yourFuncCall;
 use alloy::{json_abi::Function, sol, sol_types::SolCall};
-
+use crate::bn254::{PublicKey, Signature, Bn254,aggregate_verify,aggregate_signatures};
 use alloy_provider::{Provider, ProviderBuilder};
 
 use alloy_primitives::{Address, Bytes, U256,FixedBytes};
@@ -118,10 +118,10 @@ impl Contributor {
                     participating.push(contributor.clone());
                     sigs.push(signature.clone());
                 }
-                let agg_signature = bn254::aggregate_signatures(&sigs).unwrap();
+                let agg_signature = aggregate_signatures(&sigs).unwrap();
 
                 // Verify aggregated signature (already verified individual signatures so should never fail)
-                if !bn254::aggregate_verify(&participating, None, &payload, &agg_signature) {
+                if !aggregate_verify(&participating, None, &payload, &agg_signature) {
                     panic!("failed to verify aggregated signature");
                 }
                 info!(
