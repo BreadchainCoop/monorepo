@@ -17,12 +17,12 @@ use std::{
     str::FromStr,
     env,
 };
+use alloy::{hex::ToHexExt, providers::RootProvider, sol};
 use tracing::info;
 use dotenv::dotenv;
-use alloy::providers::{Provider, RootProvider};
+use alloy::providers::Provider;
 use alloy_network::Ethereum;
 use alloy_primitives::{Address, Bytes, U256, FixedBytes};
-use alloy::sol;
 use url::Url;
 use crate::handlers::wire;
 use YourContract::yourFuncCall;
@@ -114,9 +114,13 @@ impl<E: Clock> Orchestrator<E> {
                 function_sig,
                 storage_updates,
             }.abi_encode();
+            let payload = encoded[4..].to_vec(); // Skip first 4 bytes
+            println!("payload: {:?}", payload.encode_hex());
+            println!("block_number: {:?}", block_number);
             let payload = encoded;
             hasher.update(&payload);
             let payload = hasher.finalize();
+            println!("hash: {:?}", payload);
             // Sign the timestamp hash with BN254
             let payload = self.signer.sign(None, &payload);
             info!(round = current_block_num, msg = hex(&payload), "generated and signed message");
