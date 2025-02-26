@@ -6,8 +6,10 @@ use std::{collections::{HashMap, HashSet}, str::FromStr};
 use tracing::info;
 use alloy::{json_abi::Function, sol_types::SolCall};
 use crate::bn254::{PublicKey, Signature, Bn254, aggregate_verify, aggregate_signatures};
-use alloy_provider::{Provider, ProviderBuilder};
+use alloy_provider::{Provider, ProviderBuilder, RootProvider};
 use alloy_primitives::{Address, Bytes, U256, FixedBytes};
+use alloy_network::Ethereum;
+use url;
 
 // Import the generated binding for VotingContract
 use crate::bindings::votingcontract::VotingContract;
@@ -176,18 +178,19 @@ impl Contributor {
     }
 
     pub async fn get_storage_updates(&self, block_number: u64) -> Result<Bytes, Box<dyn std::error::Error + Send + Sync>> {
-        let provider = ProviderBuilder::new()
-            .on_builtin("http://localhost:8545")
-            .await?;
+        // Convert the string to a Url
+        let url = url::Url::parse("http://localhost:8545").unwrap();
+        let provider = RootProvider::<_, Ethereum>::new_http(url);
         println!("block_number: {:?}", block_number);
         let contract_address = Address::from_str("0xFEDB17c4B3556d2D408C003D2e2cCeD28d4A9Cb3").unwrap();
         
         // Use the binding to create a contract instance
-        let contract = VotingContract::new(contract_address, provider);
+        // let contract = VotingContract::new(contract_address, provider);
         
-        let call_return = contract.operatorExecuteVote(U256::from(block_number))
-            .call()
-            .await?;
-        Ok(call_return._0)
+        // let call_return = contract.operatorExecuteVote(U256::from(block_number))
+        //     .call()
+        //     .await?;
+        // Ok(call_return._0)
+        Ok(Bytes::new())
     }
 }
