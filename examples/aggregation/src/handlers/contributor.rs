@@ -4,7 +4,7 @@ use commonware_utils::hex;
 use prost::Message;
 use std::{collections::{HashMap, HashSet}, str::FromStr};
 use tracing::info;
-use alloy::{json_abi::Function, providers::RootProvider, sol_types::SolCall};
+use alloy::{json_abi::Function, providers::RootProvider, sol, sol_types::SolCall};
 use crate::bn254::{PublicKey, Signature, Bn254, aggregate_verify, aggregate_signatures};
 use alloy_primitives::{Address, Bytes, U256, FixedBytes};
 use url;
