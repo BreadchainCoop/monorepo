@@ -4,12 +4,13 @@ use commonware_utils::hex;
 use eigen_crypto_bls::{convert_to_g1_point, convert_to_g2_point};
 use prost::Message;
 use YourContract::yourFuncCall;
-use std::{collections::{HashMap, HashSet}, str::FromStr};
+use std::{collections::{HashMap, HashSet}, env, str::FromStr};
 use tracing::info;
 use alloy::{hex::ToHexExt, json_abi::Function, providers::RootProvider, sol, sol_types::SolCall};
 use crate::bn254::{self, aggregate_signatures, aggregate_verify, Bn254, G1PublicKey, PublicKey, Signature};
 use alloy_primitives::{Address, Bytes, U256, FixedBytes};
 use url;
+use dotenv::dotenv;
 
 // use alloy_provider::ProviderBuilder;
 // Import the generated binding for VotingContract
@@ -42,6 +43,7 @@ impl Contributor {
         t: usize,
         g1_map: HashMap<PublicKey, G1PublicKey>,
     ) -> Self {
+        dotenv().ok();
         contributors.sort();
         let mut ordered_contributors = HashMap::new();
         for (idx, contributor) in contributors.iter().enumerate() {
@@ -99,7 +101,12 @@ impl Contributor {
                 };
                 // Verify signature
                 let block_number = round;
-                let contract_address = Address::from_str("0xFEDB17c4B3556d2D408C003D2e2cCeD28d4A9Cb3").unwrap();
+
+                let contract_address = Address::from_str(
+                    &env::var("TARGET_ADDRESS")
+                        .expect("TARGET_ADDRESS must be set")
+                ).unwrap();
+                info!("Target address: {}", contract_address);
                 let function_sig = Function::parse("writeExecuteVote(bytes32,(uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256),bytes,uint256,address,bytes4)").unwrap().selector();
                 let storage_updates = self.get_storage_updates(block_number).await.unwrap();
                 let block_number = U256::from(block_number);
@@ -111,9 +118,9 @@ impl Contributor {
                     function_sig,
                     storage_updates,
                 }.abi_encode();
-                println!("encoded: {:?}", encoded.encode_hex());
                 // Generate signature
-                let payload = encoded;
+                let payload = encoded[4..].to_vec(); // Skip first 4 bytes
+                println!("payload: {:?}", payload.encode_hex());
                 hasher.update(&payload);
                 let payload = hasher.finalize();
                 println!("hash: {:?}", payload);
