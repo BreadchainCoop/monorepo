@@ -1,4 +1,4 @@
-use crate::bn254::{G1PublicKey, PublicKey, Signature, Bn254, PrivateKey};
+ause crate::bn254::{G1PublicKey, PublicKey, Signature, Bn254, PrivateKey};
 use ark_bn254::Fr;
 use ark_ff::PrimeField;
 use commonware_cryptography::{Hasher, Scheme, Sha256};
@@ -25,6 +25,9 @@ use crate::{
     bn254,
     handlers::wire,
 };
+use crate::bindings::votingcontract::VotingContractInstance;
+use alloy_primitives::U256;
+use alloy_provider::{Provider, ProviderBuilder};
 
 pub struct Orchestrator<E: Clock> {
     runtime: E,
