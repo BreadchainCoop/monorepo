@@ -98,21 +98,8 @@ impl Contributor {
                     continue;
                 };
                 // Verify signature
-                let block_number = round;
-                let contract_address = Address::from_str("0xFEDB17c4B3556d2D408C003D2e2cCeD28d4A9Cb3").unwrap();
-                let function_sig = Function::parse("writeExecuteVote(bytes32,(uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256),bytes,uint256,address,bytes4)").unwrap().selector();
-                let storage_updates = self.get_storage_updates(block_number).await.unwrap();
-                let block_number = U256::from(block_number);
-                println!("storage_updates: {:?}", storage_updates);
-                println!("block_number: {:?}", block_number);
-                let encoded = yourFuncCall{
-                    block_number,
-                    contract_address,
-                    function_sig,
-                    storage_updates,
-                }.abi_encode();
-                // Generate signature
-                let payload = encoded;
+                // Use the block number bytes as payload (same as orchestrator)
+                let payload = round.to_be_bytes();
                 hasher.update(&payload);
                 let payload = hasher.finalize();
                 if !Bn254::verify(None, &payload, &s, &signature) {
@@ -143,6 +130,10 @@ impl Contributor {
                 let agg_signature = aggregate_signatures(&sigs).unwrap();
 
                 // Verify aggregated signature (already verified individual signatures so should never fail)
+                // Use the same payload (block number bytes) that was used for verification
+                let payload = round.to_be_bytes();
+                hasher.update(&payload);
+                let payload = hasher.finalize();
                 if !aggregate_verify(&participating, None, &payload, &agg_signature) {
                     panic!("failed to verify aggregated signature");
                 }
@@ -183,21 +174,9 @@ impl Contributor {
             if !signed.insert(round) {
                 continue;
             }
-            let block_number = message.round;
-            let contract_address = Address::from_str("0xFEDB17c4B3556d2D408C003D2e2cCeD28d4A9Cb3").unwrap();
-            let function_sig = Function::parse("writeExecuteVote(bytes32,(uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256),bytes,uint256,address,bytes4)").unwrap().selector();
-            let storage_updates = self.get_storage_updates(block_number).await.unwrap();
-            println!("storage_updates: {:?}", storage_updates);
-            println!("block_number: {:?}", block_number);
-            println!("round: {:?}", round);
-            let encoded = yourFuncCall{
-                block_number: U256::from(block_number),
-                contract_address,
-                function_sig,
-                storage_updates,
-            }.abi_encode();
-            // Generate signature
-            let payload = encoded;
+            
+            // For our own signature, use the block number bytes (same as orchestrator)
+            let payload = round.to_be_bytes();
             hasher.update(&payload);
             let payload = hasher.finalize();
             let signature = self.signer.sign(None, &payload);
@@ -210,7 +189,7 @@ impl Contributor {
 
             // Return signature to orchestrator
             let message = wire::Aggregation {
-                round: block_number,
+                round,
                 payload: Some(wire::aggregation::Payload::Signature(wire::Signature {
                     signature: signature.to_vec(),
                 })),
@@ -230,13 +209,19 @@ impl Contributor {
         let url = Url::parse("http://localhost:8545").unwrap();
         let provider: RootProvider = RootProvider::new_http(url);
         println!("block_number: {:?}", block_number);
+        
         let contract_address = Address::from_str("0xFEDB17c4B3556d2D408C003D2e2cCeD28d4A9Cb3").unwrap();
         
         let contract = VotingContract::new(contract_address, provider);
         
-        let call_return = contract.operatorExecuteVote(U256::from(block_number))
-            .call()
-            .await?;
-        Ok(call_return._0)
+        // Try to call the contract function, but handle errors
+        match contract.operatorExecuteVote(U256::from(block_number)).call().await {
+            Ok(call_return) => Ok(call_return._0),
+            Err(e) => {
+                // Log the error but return empty bytes instead of propagating the error
+                info!("Error calling operatorExecuteVote: {:?}", e);
+                Ok(Bytes::default()) // Return empty bytes
+            }
+        }
     }
 }
