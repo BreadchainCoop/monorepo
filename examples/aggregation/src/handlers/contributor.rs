@@ -186,10 +186,9 @@ impl Contributor {
         
         let contract = VotingContract::new(contract_address, provider);
         
-        // let call_return = contract.operatorExecuteVote(U256::from(block_number))
-        //     .call()
-        //     .await?;
-        // Ok(call_return._0)
-        Ok(Bytes::new())
+        let call_return = contract.operatorExecuteVote(U256::from(block_number))
+            .call()
+            .await?;
+        Ok(call_return._0)
     }
 }
