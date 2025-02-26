@@ -82,8 +82,6 @@ impl<E: Clock> Orchestrator<E> {
     ) {
         let mut hasher = Sha256::new();
         let mut signatures = HashMap::new();
-        let http_endpoint = "http://localhost:8545"; // "https://ethereum-holesky.publicnode.com";
-        let provider: RootProvider = RootProvider::new_http(Url::parse(&http_endpoint).unwrap());
         
         let registry_coordinator_address: Address = Address::from_str(
             &env::var("REGISTRY_COORDINATOR_ADDRESS")
@@ -91,12 +89,22 @@ impl<E: Clock> Orchestrator<E> {
         ).unwrap();
         info!("Registry coordinator address: {}", registry_coordinator_address);
 
+        let contract_address = Address::from_str(
+            &env::var("TARGET_ADDRESS")
+                .expect("TARGET_ADDRESS must be set")
+        ).unwrap();
+        info!("Target address: {}", contract_address);
+
+        let http_endpoint = env::var("HTTP_ENDPOINT")
+            .expect("HTTP_ENDPOINT must be set");
+        info!("HTTP endpoint: {}", http_endpoint);
+
+        let provider: RootProvider = RootProvider::new_http(Url::parse(&http_endpoint).unwrap());
 
         loop {
             // Generate payload
             let current_block_num = provider.get_block_number().await.unwrap();
             let block_number = current_block_num;
-            let contract_address = Address::from_str("0xFEDB17c4B3556d2D408C003D2e2cCeD28d4A9Cb3").unwrap();
             let function_sig = Function::parse("writeExecuteVote(bytes32,(uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256),bytes,uint256,address,bytes4)").unwrap().selector();
             let storage_updates = self.get_storage_updates(current_block_num).await.unwrap();
             println!("storage_updates: {:?}", storage_updates);
