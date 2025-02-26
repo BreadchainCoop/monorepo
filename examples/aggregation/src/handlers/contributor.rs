@@ -1,12 +1,13 @@
 use commonware_cryptography::{Hasher, Scheme, Sha256};
 use commonware_p2p::{Receiver, Sender};
 use commonware_utils::hex;
+use eigen_crypto_bls::{convert_to_g1_point, convert_to_g2_point};
 use prost::Message;
 use YourContract::yourFuncCall;
 use std::{collections::{HashMap, HashSet}, str::FromStr};
 use tracing::info;
 use alloy::{json_abi::Function, providers::RootProvider, sol, sol_types::SolCall};
-use crate::bn254::{PublicKey, Signature, Bn254, aggregate_verify, aggregate_signatures};
+use crate::bn254::{self, aggregate_signatures, aggregate_verify, Bn254, G1PublicKey, PublicKey, Signature};
 use alloy_primitives::{Address, Bytes, U256, FixedBytes};
 use url;
 
@@ -27,7 +28,7 @@ pub struct Contributor {
     orchestrator: PublicKey,
     signer: Bn254,
     me: usize,
-
+    g1_map: HashMap<PublicKey, G1PublicKey>, // g2 (PublicKey) -> g1 (PublicKey)
     contributors: Vec<PublicKey>,
     ordered_contributors: HashMap<PublicKey, usize>,
     t: usize,
@@ -39,6 +40,7 @@ impl Contributor {
         signer: Bn254,
         mut contributors: Vec<PublicKey>,
         t: usize,
+        g1_map: HashMap<PublicKey, G1PublicKey>,
     ) -> Self {
         contributors.sort();
         let mut ordered_contributors = HashMap::new();
@@ -53,6 +55,7 @@ impl Contributor {
             contributors,
             ordered_contributors,
             t,
+            g1_map,
         }
     }
 
@@ -95,7 +98,21 @@ impl Contributor {
                     continue;
                 };
                 // Verify signature
-                let payload = round.to_be_bytes();
+                let block_number = round;
+                let contract_address = Address::from_str("0xFEDB17c4B3556d2D408C003D2e2cCeD28d4A9Cb3").unwrap();
+                let function_sig = Function::parse("writeExecuteVote(bytes32,(uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256),bytes,uint256,address,bytes4)").unwrap().selector();
+                let storage_updates = self.get_storage_updates(block_number).await.unwrap();
+                let block_number = U256::from(block_number);
+                println!("storage_updates: {:?}", storage_updates);
+                println!("block_number: {:?}", block_number);
+                let encoded = yourFuncCall{
+                    block_number,
+                    contract_address,
+                    function_sig,
+                    storage_updates,
+                }.abi_encode();
+                // Generate signature
+                let payload = encoded;
                 hasher.update(&payload);
                 let payload = hasher.finalize();
                 if !Bn254::verify(None, &payload, &s, &signature) {
@@ -112,6 +129,7 @@ impl Contributor {
 
                 // Aggregate signatures
                 let mut participating = Vec::new();
+                let mut participating_g1 = Vec::new();
                 let mut sigs = Vec::new();
                 for i in 0..self.contributors.len() {
                     let Some(signature) = signatures.get(&i) else {
@@ -119,6 +137,7 @@ impl Contributor {
                     };
                     let contributor = &self.contributors[i];
                     participating.push(contributor.clone());
+                    participating_g1.push(self.g1_map[contributor].clone());
                     sigs.push(signature.clone());
                 }
                 let agg_signature = aggregate_signatures(&sigs).unwrap();
@@ -127,6 +146,23 @@ impl Contributor {
                 if !aggregate_verify(&participating, None, &payload, &agg_signature) {
                     panic!("failed to verify aggregated signature");
                 }
+                let (apk, apk_g2, asig) = bn254::get_points(&participating_g1, &participating, &sigs).unwrap();
+                        let apk = convert_to_g1_point(apk).unwrap();
+                        let apk_g2 = convert_to_g2_point(apk_g2).unwrap();
+                        let asig = convert_to_g1_point(asig).unwrap();
+                        info!(
+                            msg = hex(&payload),
+                            ?participating,
+                            signature = ?agg_signature,
+                            apk_x = ?apk.X,
+                            apk_y = ?apk.Y,
+                            apk_g2_x = ?apk_g2.X,
+                            apk_g2_y = ?apk_g2.Y,
+                            asig_x = ?asig.X,
+                            asig_y = ?asig.Y,
+                            "aggregated signatures",
+                        );
+                        println!(r#"[eth verification] cast c -r https://eth.llamarpc.com 0xb7ba8bbc36AA5684fC44D02aD666dF8E23BEEbF8 "trySignatureAndApkVerification(bytes32,(uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256))" "{:?}" "({:?},{:?})" "({:?},{:?})" "({:?},{:?})""#, hex(&payload), apk.X, apk.Y, apk_g2.X, apk_g2.Y, asig.X, asig.Y);
                 info!(
                     round,
                     msg = hex(&payload),
@@ -154,7 +190,12 @@ impl Contributor {
             println!("storage_updates: {:?}", storage_updates);
             println!("block_number: {:?}", block_number);
             println!("round: {:?}", round);
-            let encoded = yourFuncCall{ block_number: U256::from(block_number), contract_address, function_sig, storage_updates }.abi_encode();
+            let encoded = yourFuncCall{
+                block_number: U256::from(block_number),
+                contract_address,
+                function_sig,
+                storage_updates,
+            }.abi_encode();
             // Generate signature
             let payload = encoded;
             hasher.update(&payload);

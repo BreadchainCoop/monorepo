@@ -99,15 +99,18 @@ impl<E: Clock> Orchestrator<E> {
             let contract_address = Address::from_str("0xFEDB17c4B3556d2D408C003D2e2cCeD28d4A9Cb3").unwrap();
             let function_sig = Function::parse("writeExecuteVote(bytes32,(uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256),bytes,uint256,address,bytes4)").unwrap().selector();
             let storage_updates = self.get_storage_updates(current_block_num).await.unwrap();
+            println!("storage_updates: {:?}", storage_updates);
             let encoded = yourFuncCall {
                 block_number: U256::from(block_number),
                 contract_address,
                 function_sig,
                 storage_updates,
             }.abi_encode();
-            
+            let payload = encoded;
+            hasher.update(&payload);
+            let payload = hasher.finalize();
             // Sign the timestamp hash with BN254
-            let payload = self.signer.sign(None, &current_block_num.to_be_bytes());
+            let payload = self.signer.sign(None, &payload);
             info!(round = current_block_num, msg = hex(&payload), "generated and signed message");
 
             // Broadcast payload
