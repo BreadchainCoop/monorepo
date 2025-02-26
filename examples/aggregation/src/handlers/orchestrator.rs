@@ -1,4 +1,6 @@
-use crate::bn254::{G1PublicKey, PublicKey, Signature};
+use crate::bn254::{G1PublicKey, PublicKey, Signature, Bn254, PrivateKey};
+use ark_bn254::Fr;
+use ark_ff::PrimeField;
 use commonware_cryptography::{Hasher, Scheme, Sha256};
 use commonware_macros::select;
 use commonware_p2p::{Receiver, Sender};
@@ -9,19 +11,22 @@ use prost::Message;
 use std::{
     collections::HashMap,
     time::{Duration, UNIX_EPOCH},
+    str::FromStr,
 };
 use tracing::info;
 
+use alloy_provider::{Provider,RootProvider};
+use alloy_network::Ethereum;
+use url::Url;
 use crate::{
-    bn254::{self, Bn254},
+    bn254,
     handlers::wire,
 };
 
 pub struct Orchestrator<E: Clock> {
     runtime: E,
-
+    signer: Bn254,
     aggregation_frequency: Duration,
-
     contributors: Vec<PublicKey>,
     g1_map: HashMap<PublicKey, G1PublicKey>, // g2 (PublicKey) -> g1 (PublicKey)
     ordered_contributors: HashMap<PublicKey, usize>,
@@ -31,6 +36,7 @@ pub struct Orchestrator<E: Clock> {
 impl<E: Clock> Orchestrator<E> {
     pub fn new(
         runtime: E,
+        signer: Bn254,
         aggregation_frequency: Duration,
         mut contributors: Vec<PublicKey>,
         g1_map: HashMap<PublicKey, G1PublicKey>,
@@ -43,6 +49,7 @@ impl<E: Clock> Orchestrator<E> {
         }
         Self {
             runtime,
+            signer,
             aggregation_frequency,
             contributors,
             g1_map,
@@ -52,23 +59,29 @@ impl<E: Clock> Orchestrator<E> {
     }
 
     pub async fn run(
-        self,
+        mut self,
         mut sender: impl Sender,
         mut receiver: impl Receiver<PublicKey = PublicKey>,
     ) {
         let mut hasher = Sha256::new();
         let mut signatures = HashMap::new();
+        let http_endpoint = "http://localhost:8545"; // "https://ethereum-holesky.publicnode.com";
+        let provider: RootProvider<_, Ethereum> = RootProvider::new_http(Url::parse(&http_endpoint).unwrap());
         loop {
             // Generate payload
+            let current_block_num = provider.get_block_number().await.unwrap();
             let current = self.runtime.current();
-            let current = current.duration_since(UNIX_EPOCH).unwrap().as_secs();
-            hasher.update(&current.to_be_bytes());
-            let payload = hasher.finalize();
-            info!(round = current, msg = hex(&payload), "generated message");
+            // let current = current.duration_since(UNIX_EPOCH).unwrap().as_secs();
+            hasher.update(&current_block_num.to_be_bytes());
+            // let timestamp_hash = hasher.finalize();
+            
+            // Sign the timestamp hash with BN254
+            let payload = self.signer.sign(None, &current_block_num.to_be_bytes());
+            info!(round = current_block_num, msg = hex(&payload), "generated and signed message");
 
             // Broadcast payload
             let message = wire::Aggregation {
-                round: current,
+                round: current_block_num,
                 payload: Some(wire::aggregation::Payload::Start(wire::Start {})),
             }
             .encode_to_vec()
@@ -77,7 +90,7 @@ impl<E: Clock> Orchestrator<E> {
                 .send(commonware_p2p::Recipients::All, message, true)
                 .await
                 .expect("failed to broadcast message");
-            signatures.insert(current, HashMap::new());
+            signatures.insert(current_block_num, HashMap::new());
 
             // Listen for messages until the next broadcast
             let continue_time = self.runtime.current() + self.aggregation_frequency;
