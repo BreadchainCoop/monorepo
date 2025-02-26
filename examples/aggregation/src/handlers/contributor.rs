@@ -2,6 +2,7 @@ use commonware_cryptography::{Hasher, Scheme, Sha256};
 use commonware_p2p::{Receiver, Sender};
 use commonware_utils::hex;
 use prost::Message;
+use YourContract::yourFuncCall;
 use std::{collections::{HashMap, HashSet}, str::FromStr};
 use tracing::info;
 use alloy::{json_abi::Function, providers::RootProvider, sol, sol_types::SolCall};
@@ -15,6 +16,12 @@ use crate::bindings::votingcontract::VotingContract;
 use url::Url;
 
 use super::wire;
+sol! {
+    contract YourContract {
+        #[derive(Debug)]
+        function yourFunc(uint256 block_number, address contract_address, bytes4 function_sig, bytes storage_updates) public returns (bytes memory);
+    }
+}
 
 pub struct Contributor {
     orchestrator: PublicKey,
@@ -147,9 +154,9 @@ impl Contributor {
             println!("storage_updates: {:?}", storage_updates);
             println!("block_number: {:?}", block_number);
             println!("round: {:?}", round);
-            // let encoded = yourFuncCall{ block_number: U256::from(block_number), contract_address, function_sig, storage_updates }.abi_encode();
+            let encoded = yourFuncCall{ block_number: U256::from(block_number), contract_address, function_sig, storage_updates }.abi_encode();
             // Generate signature
-            let payload = message.round.to_be_bytes();
+            let payload = encoded;
             hasher.update(&payload);
             let payload = hasher.finalize();
             let signature = self.signer.sign(None, &payload);
@@ -162,7 +169,7 @@ impl Contributor {
 
             // Return signature to orchestrator
             let message = wire::Aggregation {
-                round,
+                round: block_number,
                 payload: Some(wire::aggregation::Payload::Signature(wire::Signature {
                     signature: signature.to_vec(),
                 })),

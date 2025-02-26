@@ -19,12 +19,12 @@ use tracing::info;
 use dotenv::dotenv;
 use alloy::providers::{Provider, RootProvider};
 use alloy_network::Ethereum;
-use alloy_primitives::Address;
+use alloy_primitives::{Address, Bytes, U256, FixedBytes};
 use alloy::sol;
 use url::Url;
 use crate::handlers::wire;
-use alloy_primitives::U256;
 use YourContract::yourFuncCall;
+use crate::bindings::votingcontract::VotingContract;
 
 
 pub struct Orchestrator<E: Clock> {
@@ -214,5 +214,19 @@ impl<E: Clock> Orchestrator<E> {
                 }
             }
         }
+    }
+    pub async fn get_storage_updates(&self, block_number: u64) -> Result<Bytes, Box<dyn std::error::Error + Send + Sync>> {
+        // Convert the string to a Url
+        let url = Url::parse("http://localhost:8545").unwrap();
+        let provider: RootProvider = RootProvider::new_http(url);
+        println!("block_number: {:?}", block_number);
+        let contract_address = Address::from_str("0xFEDB17c4B3556d2D408C003D2e2cCeD28d4A9Cb3").unwrap();
+        
+        let contract = VotingContract::new(contract_address, provider);
+        
+        let call_return = contract.operatorExecuteVote(U256::from(block_number))
+            .call()
+            .await?;
+        Ok(call_return._0)
     }
 }
