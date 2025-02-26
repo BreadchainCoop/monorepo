@@ -1,4 +1,5 @@
 use crate::bn254::{G1PublicKey, PublicKey, Signature, Bn254, PrivateKey};
+use crate::bn254;
 use ark_bn254::Fr;
 use ark_ff::PrimeField;
 use commonware_cryptography::{Hasher, Scheme, Sha256};
@@ -21,10 +22,7 @@ use alloy_provider::{Provider,RootProvider};
 use alloy_network::Ethereum;
 use alloy_primitives::Address;
 use url::Url;
-use crate::{
-    bn254,
-    handlers::wire,
-};
+use crate::handlers::wire;
 use alloy_primitives::U256;
 
 pub struct Orchestrator<E: Clock> {

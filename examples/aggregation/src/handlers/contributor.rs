@@ -12,6 +12,13 @@ use alloy_provider::{Provider, ProviderBuilder};
 use alloy_primitives::{Address, Bytes, U256,FixedBytes};
 
 sol! {
+    #[sol(abi)]
+    contract VotingContract {
+        function operatorExecuteVote(uint256 blockNumber) external view returns (bytes memory);
+    }
+}
+
+sol! {
     contract YourContract {
         #[derive(Debug)]
         function yourFunc(uint256 block_number, address contract_address, bytes4 function_sig, bytes storage_updates) public returns (bytes memory);
@@ -186,7 +193,7 @@ impl Contributor {
             .await?;
         println!("block_number: {:?}", block_number);
         let contract_address = Address::from_str("0xFEDB17c4B3556d2D408C003D2e2cCeD28d4A9Cb3").unwrap();
-        let contract = VotingContractInstance::new(contract_address, provider);
+        let contract = VotingContract::VotingContractCalls::builder(contract_address, provider);
         let call_return = contract.operatorExecuteVote(U256::from(block_number))
             .call()
             .await?;
