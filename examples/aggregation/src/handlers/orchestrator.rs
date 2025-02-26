@@ -19,7 +19,6 @@ use tracing::info;
 use dotenv::dotenv;
 use alloy_provider::{Provider,RootProvider};
 use alloy_network::Ethereum;
-use alloy_primitives::Address;
 use url::Url;
 use eigen_logging::{get_logger, init_logger};
 use commonware_runtime::{
@@ -39,20 +38,14 @@ use eigen_types::{
     operator::QuorumThresholdPercentages,
 };
 use alloy_primitives::{Address, Bytes, FixedBytes, address};
-use alloy_network::Ethereum;
-use std::str::FromStr;
 use std::sync::Arc;
 use ark_ec::AffineRepr;
-use ark_ff::PrimeField;
-use std::env;
-use dotenv::dotenv;
 use axum::{
     routing::post,
     Json,
     Router,
     extract::State,
 };
-use url::Url;
 use tokio_util::sync::CancellationToken;
 
 pub struct Orchestrator<E: Clock + Spawner> {
