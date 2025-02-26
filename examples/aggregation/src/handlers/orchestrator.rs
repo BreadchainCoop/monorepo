@@ -17,8 +17,7 @@ use std::{
 };
 use tracing::info;
 use dotenv::dotenv;
-
-use alloy_provider::{Provider,RootProvider};
+use alloy::providers::{Provider, RootProvider};
 use alloy_network::Ethereum;
 use alloy_primitives::Address;
 use url::Url;
@@ -71,7 +70,7 @@ impl<E: Clock> Orchestrator<E> {
         let mut hasher = Sha256::new();
         let mut signatures = HashMap::new();
         let http_endpoint = "http://localhost:8545"; // "https://ethereum-holesky.publicnode.com";
-        let provider: RootProvider<_, Ethereum> = RootProvider::new_http(Url::parse(&http_endpoint).unwrap());
+        let provider: RootProvider = RootProvider::new_http(Url::parse(&http_endpoint).unwrap());
         
         let registry_coordinator_address: Address = Address::from_str(
             &env::var("REGISTRY_COORDINATOR_ADDRESS")

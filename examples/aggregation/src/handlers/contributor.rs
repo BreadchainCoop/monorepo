@@ -4,15 +4,15 @@ use commonware_utils::hex;
 use prost::Message;
 use std::{collections::{HashMap, HashSet}, str::FromStr};
 use tracing::info;
-use alloy::{json_abi::Function, sol_types::SolCall};
+use alloy::{json_abi::Function, providers::RootProvider, sol_types::SolCall};
 use crate::bn254::{PublicKey, Signature, Bn254, aggregate_verify, aggregate_signatures};
-use alloy_provider::{Provider, ProviderBuilder, RootProvider};
 use alloy_primitives::{Address, Bytes, U256, FixedBytes};
-use alloy_network::Ethereum;
 use url;
 
+// use alloy_provider::ProviderBuilder;
 // Import the generated binding for VotingContract
 use crate::bindings::votingcontract::VotingContract;
+use url::Url;
 
 use super::wire;
 
@@ -179,13 +179,12 @@ impl Contributor {
 
     pub async fn get_storage_updates(&self, block_number: u64) -> Result<Bytes, Box<dyn std::error::Error + Send + Sync>> {
         // Convert the string to a Url
-        let url = url::Url::parse("http://localhost:8545").unwrap();
-        let provider = RootProvider::<_, Ethereum>::new_http(url);
+        let url = Url::parse("http://localhost:8545").unwrap();
+        let provider: RootProvider = RootProvider::new_http(url);
         println!("block_number: {:?}", block_number);
         let contract_address = Address::from_str("0xFEDB17c4B3556d2D408C003D2e2cCeD28d4A9Cb3").unwrap();
         
-        // Use the binding to create a contract instance
-        // let contract = VotingContract::new(contract_address, provider);
+        let contract = VotingContract::new(contract_address, provider);
         
         // let call_return = contract.operatorExecuteVote(U256::from(block_number))
         //     .call()
