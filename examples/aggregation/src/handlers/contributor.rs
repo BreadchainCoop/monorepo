@@ -21,7 +21,7 @@ use super::wire;
 sol! {
     contract YourContract {
         #[derive(Debug)]
-        function yourFunc(uint256 block_number, address contract_address, bytes4 function_sig, bytes storage_updates) public returns (bytes memory);
+        function yourFunc(bytes memory name_space, uint256 block_number, address contract_address, bytes4 function_sig, bytes storage_updates) public returns (bytes memory);
     }
 }
 
@@ -108,11 +108,13 @@ impl Contributor {
                 ).unwrap();
                 info!("Target address: {}", contract_address);
                 let function_sig = Function::parse("writeExecuteVote(bytes32,(uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256),bytes,uint256,address,bytes4)").unwrap().selector();
-                let storage_updates = self.get_storage_updates(block_number).await.unwrap();
-                let block_number = U256::from(block_number);
+                let storage_updates = self.get_storage_updates(1).await.unwrap();
+                let block_number = U256::from(1); //TODO fix hardcoded
+                let name_space = alloy_primitives::Bytes::from("_COMMONWARE_AGGREGATION_");
                 println!("storage_updates: {:?}", storage_updates);
                 println!("block_number: {:?}", block_number);
                 let encoded = yourFuncCall{
+                    name_space,
                     block_number,
                     contract_address,
                     function_sig,
@@ -201,12 +203,14 @@ impl Contributor {
                     .expect("TARGET_ADDRESS must be set")
             ).unwrap();
             let function_sig = Function::parse("writeExecuteVote(bytes32,(uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256),bytes,uint256,address,bytes4)").unwrap().selector();
-            let storage_updates = self.get_storage_updates(block_number).await.unwrap();
+            let storage_updates = self.get_storage_updates(1).await.unwrap();
+            let name_space = alloy_primitives::Bytes::from("_COMMONWARE_AGGREGATION_");
             println!("storage_updates: {:?}", storage_updates);
             println!("block_number: {:?}", block_number);
             println!("round: {:?}", round);
             let encoded = yourFuncCall{
-                block_number: U256::from(block_number),
+                name_space,
+                block_number: U256::from(1), //TODO fix hardcoded
                 contract_address,
                 function_sig,
                 storage_updates,

@@ -3,4 +3,3 @@
 /target
 *.vscode
 .env
-Cargo.lock

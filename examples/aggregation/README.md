@@ -9,7 +9,7 @@ _To run this example, you must first install [Rust](https://www.rust-lang.org/to
 
 ## Holesky (since its broken???)
 ```bash
-anvil -f https://ethereum-holesky.publicnode.com --block-time 5
+anvil -f https://1rpc.io/holesky --block-time 12
 ```
 
 ## For the rest of the cli's start with this

@@ -42,9 +42,14 @@ pub struct Orchestrator<E: Clock> {
 sol! {
     contract YourContract {
         #[derive(Debug)]
-        function yourFunc(uint256 block_number, address contract_address, bytes4 function_sig, bytes storage_updates) public returns (bytes memory);
+        function yourFunc(bytes memory name_space, uint256 block_number, address contract_address, bytes4 function_sig, bytes storage_updates) public returns (bytes memory);
     }
 }
+
+// sol! {
+//     #[sol(rpc)]
+//     "../../Something.sol"
+// }
 
 
 impl<E: Clock> Orchestrator<E> {
@@ -107,9 +112,11 @@ impl<E: Clock> Orchestrator<E> {
             let block_number = current_block_num;
             let function_sig = Function::parse("writeExecuteVote(bytes32,(uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256),bytes,uint256,address,bytes4)").unwrap().selector();
             let storage_updates = self.get_storage_updates(current_block_num).await.unwrap();
+            let name_space = alloy_primitives::Bytes::from("_COMMONWARE_AGGREGATION_");
             println!("storage_updates: {:?}", storage_updates);
             let encoded = yourFuncCall {
-                block_number: U256::from(block_number),
+                name_space,
+                block_number: U256::from(1), //TODO fix hardcodod
                 contract_address,
                 function_sig,
                 storage_updates,
@@ -191,6 +198,7 @@ impl<E: Clock> Orchestrator<E> {
                         // Verify signature
                         // Generate the same payload that contributors are signing
                         let block_number = msg.round;
+                        let name_space = alloy_primitives::Bytes::from("_COMMONWARE_AGGREGATION_");
                         let function_sig = Function::parse("writeExecuteVote(bytes32,(uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256),bytes,uint256,address,bytes4)").unwrap().selector();
                         let storage_updates = match self.get_storage_updates(block_number).await {
                             Ok(updates) => {
@@ -204,7 +212,8 @@ impl<E: Clock> Orchestrator<E> {
                         };
                         
                         let encoded = yourFuncCall {
-                            block_number: U256::from(block_number),
+                            name_space,
+                            block_number: U256::from(1), //TODO fix hardcoded
                             contract_address,
                             function_sig,
                             storage_updates,
@@ -268,31 +277,58 @@ impl<E: Clock> Orchestrator<E> {
 
                         // Log points
                         let (apk, apk_g2, asig) = bn254::get_points(&participating_g1, &participating, &signatures).unwrap();
-                        let apk = convert_to_g1_point(apk).unwrap();
-                        let apk_g2 = convert_to_g2_point(apk_g2).unwrap();
-                        let asig = convert_to_g1_point(asig).unwrap();
+                        let apk_g1 = convert_to_g1_point(apk).unwrap();
+                        let apk_g2_point = convert_to_g2_point(apk_g2).unwrap();
+                        let asig_g1 = convert_to_g1_point(asig).unwrap();
                         info!(
                             round = msg.round,
                             msg = hex(&payload),
                             ?participating,
                             signature = ?agg_signature,
-                            apk_x = ?apk.X,
-                            apk_y = ?apk.Y,
-                            apk_g2_x = ?apk_g2.X,
-                            apk_g2_y = ?apk_g2.Y,
-                            asig_x = ?asig.X,
-                            asig_y = ?asig.Y,
+                            apk_x = ?apk_g1.X,
+                            apk_y = ?apk_g1.Y,
+                            apk_g2_x = ?apk_g2_point.X,
+                            apk_g2_y = ?apk_g2_point.Y,
+                            asig_x = ?asig_g1.X,
+                            asig_y = ?asig_g1.Y,
                             "aggregated signatures",
                         );
-                        println!(r#"[eth verification] cast c -r https://eth.llamarpc.com 0xb7ba8bbc36AA5684fC44D02aD666dF8E23BEEbF8 "trySignatureAndApkVerification(bytes32,(uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256))" "{:?}" "({:?},{:?})" "({:?},{:?})" "({:?},{:?})""#, hex(&payload), apk.X, apk.Y, apk_g2.X, apk_g2.Y, asig.X, asig.Y);
+                        println!(r#"[eth verification] cast c -r https://eth.llamarpc.com 0xb7ba8bbc36AA5684fC44D02aD666dF8E23BEEbF8 "trySignatureAndApkVerification(bytes32,(uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256))" "{:?}" "({:?},{:?})" "({:?},{:?})" "({:?},{:?})""#, hex(&payload), apk_g1.X, apk_g1.Y, apk_g2_point.X, apk_g2_point.Y, asig_g1.X, asig_g1.Y);
+                        
+                        // Execute the vote with the aggregated signature
+                        match self.execute_vote_with_aggregated_signature(
+                            &payload,
+                            &participating_g1,
+                            &participating,
+                            &signatures,
+                            msg.round
+                        ).await {
+                            Ok(result) => {
+                                info!(
+                                    round = msg.round,
+                                    "Successfully executed vote with aggregated signature. Result: {:?}",
+                                    result
+                                );
+                            },
+                            Err(e) => {
+                                info!(
+                                    round = msg.round,
+                                    "Failed to execute vote with aggregated signature: {:?}",
+                                    e
+                                );
+                            }
+                        }
                     },
                 }
             }
         }
     }
+
     pub async fn get_storage_updates(&self, block_number: u64) -> Result<Bytes, Box<dyn std::error::Error + Send + Sync>> {
         // Convert the string to a Url
-        let url = Url::parse("http://localhost:8545").unwrap();
+        let http_endpoint = env::var("HTTP_ENDPOINT")
+            .expect("HTTP_ENDPOINT must be set");
+        let url = Url::parse(&http_endpoint).unwrap();
         let provider: RootProvider = RootProvider::new_http(url);
         println!("block_number: {:?}", block_number);
 
@@ -304,9 +340,141 @@ impl<E: Clock> Orchestrator<E> {
         
         let contract = VotingContract::new(contract_address, provider);
         
-        let call_return = contract.operatorExecuteVote(U256::from(block_number))
+        let call_return = contract.operatorExecuteVote(U256::from(1))
             .call()
             .await?;
         Ok(call_return._0)
+    }
+
+    pub async fn write_execute_vote(
+        &self,
+        msg_hash: FixedBytes<32>,
+        apk: <crate::bindings::votingcontract::BN254::G1Point as alloy::sol_types::SolType>::RustType,
+        apk_g2: <crate::bindings::votingcontract::BN254::G2Point as alloy::sol_types::SolType>::RustType,
+        sigma: <crate::bindings::votingcontract::BN254::G1Point as alloy::sol_types::SolType>::RustType,
+        storage_updates: Bytes,
+        transition_index: U256,
+        target_addr: Address,
+        target_function: FixedBytes<4>
+    ) -> Result<Bytes, Box<dyn std::error::Error + Send + Sync>> {
+        // Convert the string to a Url
+        let http_endpoint = env::var("HTTP_ENDPOINT")
+            .expect("HTTP_ENDPOINT must be set");
+        let url = Url::parse(&http_endpoint).unwrap();
+        let provider: RootProvider = RootProvider::new_http(url);
+        
+        let contract_address: Address = Address::from_str(
+            &env::var("TARGET_ADDRESS")
+                .expect("TARGET_ADDRESS must be set")
+        ).unwrap();
+        info!("Target address: {}", contract_address);
+        
+        let contract = VotingContract::new(contract_address, provider);
+        let value = U256::from_str_radix("100000000000000000", 10).unwrap();
+        
+        // Debug logging for all parameters
+        info!("Calling writeExecuteVote with parameters:");
+        info!("msg_hash: {:?}", msg_hash);
+        info!("apk: X={}, Y={}", apk.X, apk.Y);
+        info!("apk_g2: X=[{}, {}], Y=[{}, {}]", apk_g2.X[0], apk_g2.X[1], apk_g2.Y[0], apk_g2.Y[1]);
+        info!("sigma: X={}, Y={}", sigma.X, sigma.Y);
+        info!("storage_updates length: {}", storage_updates.len());
+        info!("transition_index: {}", transition_index);
+        info!("target_addr: {}", target_addr);
+        info!("target_function: {:?}", target_function);
+        info!("value: {}", value);
+        println!(r#"[eth verification] cast s --private-key 0xc7697fdc93ad14a4b17d4865f2736393a19ba4a10e6306a6d327ecf528b61ef6 0xFEDB17c4B3556d2D408C003D2e2cCeD28d4A9Cb3 --value 100000000000000000 "writeExecuteVote(bytes32,(uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256),bytes,uint256,address,bytes4)" "{:?}" "({:?},{:?})" "({:?},{:?})" "({:?},{:?})" "{:?}" "{:?}" "{:?}" "{:?}""#, msg_hash, apk.X, apk.Y, apk_g2.X, apk_g2.Y, sigma.X, sigma.Y, storage_updates, transition_index, target_addr, target_function);
+        // Call the writeExecuteVote function with all parameters
+        let call_return = contract.writeExecuteVote(
+            msg_hash,
+            apk,
+            apk_g2,
+            sigma,
+            storage_updates,
+            transition_index,
+            target_addr,
+            target_function
+        )
+        .value(value)
+        .call()
+        .await?;
+        
+        info!("Successfully called writeExecuteVote with transition index: {}", transition_index);
+        Ok(call_return._0)
+    }
+
+    pub async fn execute_vote_with_aggregated_signature(
+        &self,
+        payload_hash: &[u8],
+        participating_g1: &[G1PublicKey],
+        participating: &[PublicKey],
+        signatures: &[Signature],
+        block_number: u64
+    ) -> Result<Bytes, Box<dyn std::error::Error + Send + Sync>> {
+        // Get the storage updates for the given block number
+        let storage_updates = self.get_storage_updates(block_number).await?;
+        
+        // Get the points for the aggregated signature
+        let (apk, apk_g2, asig) = bn254::get_points(participating_g1, participating, signatures).unwrap();
+        
+        // Convert to G1Point and G2Point types
+        let apk_g1 = convert_to_g1_point(apk).unwrap();
+        let apk_g2_point = convert_to_g2_point(apk_g2).unwrap();
+        let asig_g1 = convert_to_g1_point(asig).unwrap();
+        
+        // Create G1Point and G2Point structs for the contract call
+        let apk_struct = crate::bindings::votingcontract::BN254::G1Point {
+            X: U256::from_str(&apk_g1.X.to_string()).unwrap(),
+            Y: U256::from_str(&apk_g1.Y.to_string()).unwrap(),
+        };
+        
+        let apk_g2_struct = crate::bindings::votingcontract::BN254::G2Point {
+            X: [
+                U256::from_str(&apk_g2_point.X[0].to_string()).unwrap(),
+                U256::from_str(&apk_g2_point.X[1].to_string()).unwrap(),
+            ],
+            Y: [
+                U256::from_str(&apk_g2_point.Y[0].to_string()).unwrap(),
+                U256::from_str(&apk_g2_point.Y[1].to_string()).unwrap(),
+            ],
+        };
+        
+        let sigma_struct = crate::bindings::votingcontract::BN254::G1Point {
+            X: U256::from_str(&asig_g1.X.to_string()).unwrap(),
+            Y: U256::from_str(&asig_g1.Y.to_string()).unwrap(),
+        };
+        
+        // Convert payload hash to FixedBytes<32>
+        let mut msg_hash_bytes = [0u8; 32];
+        if payload_hash.len() >= 32 {
+            msg_hash_bytes.copy_from_slice(&payload_hash[0..32]);
+        } else {
+            msg_hash_bytes[0..payload_hash.len()].copy_from_slice(payload_hash);
+        }
+        let msg_hash = FixedBytes::<32>::from(msg_hash_bytes);
+        
+        // Debug print the raw hex of the message hash
+        info!("Message hash raw bytes: {}", hex(payload_hash));
+        info!("Message hash as FixedBytes<32>: {:?}", msg_hash);
+        
+        // Get target address and function selector
+        let target_addr = Address::from_str(
+            &env::var("TARGET_ADDRESS")
+                .expect("TARGET_ADDRESS must be set")
+        ).unwrap();
+        
+        // Function selector for the target function
+        let target_function = Function::parse("writeExecuteVote(bytes32,(uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256),bytes,uint256,address,bytes4)").unwrap().selector();
+        // Call the writeExecuteVote function
+        self.write_execute_vote(
+            msg_hash,
+            apk_struct,
+            apk_g2_struct,
+            sigma_struct,
+            storage_updates,
+            U256::from(1), // TODO fix hardcoded.
+            target_addr,
+            target_function
+        ).await
     }
 }
