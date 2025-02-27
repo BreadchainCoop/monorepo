@@ -2,5 +2,6 @@
 *.DS_Store
 /target
 *.vscode
+restaking/forge_cache
+restaking/src/eigenlayer/artifacts
 .env
-Cargo.lock

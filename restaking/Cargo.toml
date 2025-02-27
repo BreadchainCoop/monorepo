@@ -1,0 +1,39 @@
+[package]
+name = "commonware-restaking"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+eigen-services-blsaggregation = "0.1.2"
+eigen-client-avsregistry = "0.1.2"
+eigen-logging = "0.1.1"
+eigen-services-avsregistry = "0.1.2"
+eigen-services-operatorsinfo = "0.1.2"
+eigen-crypto-bls = "0.1.2"
+eigen-crypto-bn254 = "0.1.2"
+eigen-common = "0.1.2" 
+alloy = "0.8.0"
+alloy-primitives = "0.8.15"
+alloy-provider = "0.5.4"
+alloy-network = "0.5.4"
+alloy-transport = "0.5.4"
+alloy-transport-http = "0.5.4"
+eigen-types = "0.1.2"
+eigen-utils = "0.1.2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+url = { version = "2.0", features = ["serde"] }
+
+tokio-util = "0.7"
+
+tokio-rustls = { version = "0.24.1" }
+
+[dev-dependencies]
+tower = { version = "0.4", features = ["full"] }
+alloy-json-rpc = "0.9.2"
+alloy-node-bindings = "0.9.2"
+tokio = { version = "1", features = ["full"] }
+rand = { workspace = true }
+
+[build-dependencies]
+anyhow = "1.0"
