@@ -340,7 +340,7 @@ impl<E: Clock> Orchestrator<E> {
         
         let contract = VotingContract::new(contract_address, provider);
         
-        let call_return = contract.operatorExecuteVote(U256::from(1))
+        let call_return = contract.operatorExecuteVote(U256::from(1))//TODO fix hardcoded
             .call()
             .await?;
         Ok(call_return._0)

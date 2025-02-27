@@ -108,7 +108,7 @@ impl Contributor {
                 ).unwrap();
                 info!("Target address: {}", contract_address);
                 let function_sig = Function::parse("writeExecuteVote(bytes32,(uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256),bytes,uint256,address,bytes4)").unwrap().selector();
-                let storage_updates = self.get_storage_updates(1).await.unwrap();
+                let storage_updates = self.get_storage_updates(1).await.unwrap(); //TODO fix hardcoded
                 let block_number = U256::from(1); //TODO fix hardcoded
                 let name_space = alloy_primitives::Bytes::from("_COMMONWARE_AGGREGATION_");
                 println!("storage_updates: {:?}", storage_updates);
@@ -203,7 +203,7 @@ impl Contributor {
                     .expect("TARGET_ADDRESS must be set")
             ).unwrap();
             let function_sig = Function::parse("writeExecuteVote(bytes32,(uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256),bytes,uint256,address,bytes4)").unwrap().selector();
-            let storage_updates = self.get_storage_updates(1).await.unwrap();
+            let storage_updates = self.get_storage_updates(1).await.unwrap(); //TODO fix hardcoded
             let name_space = alloy_primitives::Bytes::from("_COMMONWARE_AGGREGATION_");
             println!("storage_updates: {:?}", storage_updates);
             println!("block_number: {:?}", block_number);
