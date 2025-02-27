@@ -21,7 +21,7 @@ use super::wire;
 sol! {
     contract YourContract {
         #[derive(Debug)]
-        function yourFunc(bytes memory name_space, uint256 block_number, address contract_address, bytes4 function_sig, bytes storage_updates) public returns (bytes memory);
+        function yourFunc(uint256 transition_index, address contract_address, bytes4 function_sig, bytes storage_updates) public returns (bytes memory);
     }
 }
 
@@ -100,7 +100,13 @@ impl Contributor {
                     continue;
                 };
                 // Verify signature
-                let block_number = round;
+                let transition_index = round;
+                // Check if transition_index matches state transition count
+                let state_transition_count = self.get_state_transition_count().await.unwrap();
+                if U256::from(transition_index) != state_transition_count {
+                    println!("WARNING: transition_index ({}) does not match state_transition_count ({})", 
+                        transition_index, state_transition_count);
+                }
 
                 let contract_address = Address::from_str(
                     &env::var("TARGET_ADDRESS")
@@ -109,13 +115,10 @@ impl Contributor {
                 info!("Target address: {}", contract_address);
                 let function_sig = Function::parse("writeExecuteVote(bytes32,(uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256),bytes,uint256,address,bytes4)").unwrap().selector();
                 let storage_updates = self.get_storage_updates(1).await.unwrap(); //TODO fix hardcoded
-                let block_number = U256::from(1); //TODO fix hardcoded
-                let name_space = alloy_primitives::Bytes::from("_COMMONWARE_AGGREGATION_");
                 println!("storage_updates: {:?}", storage_updates);
-                println!("block_number: {:?}", block_number);
+                println!("transition_index: {:?}", transition_index);
                 let encoded = yourFuncCall{
-                    name_space,
-                    block_number,
+                    transition_index: U256::from(transition_index),
                     contract_address,
                     function_sig,
                     storage_updates,
@@ -197,20 +200,18 @@ impl Contributor {
             if !signed.insert(round) {
                 continue;
             }
-            let block_number = message.round;
+            let transition_index = message.round;
             let contract_address = Address::from_str(
                 &env::var("TARGET_ADDRESS")
                     .expect("TARGET_ADDRESS must be set")
             ).unwrap();
             let function_sig = Function::parse("writeExecuteVote(bytes32,(uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256),bytes,uint256,address,bytes4)").unwrap().selector();
             let storage_updates = self.get_storage_updates(1).await.unwrap(); //TODO fix hardcoded
-            let name_space = alloy_primitives::Bytes::from("_COMMONWARE_AGGREGATION_");
             println!("storage_updates: {:?}", storage_updates);
-            println!("block_number: {:?}", block_number);
+            println!("transition_index: {:?}", transition_index);
             println!("round: {:?}", round);
             let encoded = yourFuncCall{
-                name_space,
-                block_number: U256::from(1), //TODO fix hardcoded
+                transition_index: U256::from(transition_index),
                 contract_address,
                 function_sig,
                 storage_updates,
@@ -231,7 +232,7 @@ impl Contributor {
 
             // Return signature to orchestrator
             let message = wire::Aggregation {
-                round: block_number,
+                round: transition_index,
                 payload: Some(wire::aggregation::Payload::Signature(wire::Signature {
                     signature: signature.to_vec(),
                 })),
@@ -249,13 +250,13 @@ impl Contributor {
         }
     }
 
-    pub async fn get_storage_updates(&self, block_number: u64) -> Result<Bytes, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn get_storage_updates(&self, transition_index: u64) -> Result<Bytes, Box<dyn std::error::Error + Send + Sync>> {
         // Convert the string to a Url
         let http_endpoint = env::var("HTTP_ENDPOINT")
             .expect("HTTP_ENDPOINT must be set");
         let url = Url::parse(&http_endpoint).unwrap();
         let provider: RootProvider = RootProvider::new_http(url);
-        println!("block_number: {:?}", block_number);
+        println!("transition_index: {:?}", transition_index);
         let contract_address = Address::from_str(
             &env::var("TARGET_ADDRESS")
                 .expect("TARGET_ADDRESS must be set")
@@ -263,9 +264,36 @@ impl Contributor {
         
         let contract = VotingContract::new(contract_address, provider);
         
-        let call_return = contract.operatorExecuteVote(U256::from(block_number))
+        let call_return = contract.operatorExecuteVote(U256::from(transition_index))
             .call()
             .await?;
         Ok(call_return._0)
+    }
+
+    pub async fn get_state_transition_count(&self) -> Result<U256, Box<dyn std::error::Error + Send + Sync>> {
+        // Get the HTTP endpoint from environment variables
+        let http_endpoint = env::var("HTTP_ENDPOINT")
+            .expect("HTTP_ENDPOINT must be set");
+        let url = Url::parse(&http_endpoint).unwrap();
+        
+        // Create a provider
+        let provider: RootProvider = RootProvider::new_http(url);
+        
+        // Get the contract address from environment variables
+        let contract_address = Address::from_str(
+            &env::var("TARGET_ADDRESS")
+                .expect("TARGET_ADDRESS must be set")
+        ).unwrap();
+        
+        // Create a contract instance
+        let contract = VotingContract::new(contract_address, provider);
+        
+        // Call the stateTransitionCount function
+        let call_return = contract.stateTransitionCount()
+            .call()
+            .await?;
+        
+        // Return the count value
+        Ok(call_return.count)
     }
 }

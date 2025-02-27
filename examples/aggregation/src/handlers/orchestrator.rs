@@ -42,7 +42,7 @@ pub struct Orchestrator<E: Clock> {
 sol! {
     contract YourContract {
         #[derive(Debug)]
-        function yourFunc(bytes memory name_space, uint256 block_number, address contract_address, bytes4 function_sig, bytes storage_updates) public returns (bytes memory);
+        function yourFunc(uint256 transition_index, address contract_address, bytes4 function_sig, bytes storage_updates) public returns (bytes memory);
     }
 }
 
@@ -109,32 +109,31 @@ impl<E: Clock> Orchestrator<E> {
         loop {
             // Generate payload
             let current_block_num = provider.get_block_number().await.unwrap();
-            let block_number = current_block_num;
+            let transition_index = self.get_state_transition_count().await.unwrap();
+            let transition_index_u64 = transition_index.to::<u64>();
             let function_sig = Function::parse("writeExecuteVote(bytes32,(uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256),bytes,uint256,address,bytes4)").unwrap().selector();
             let storage_updates = self.get_storage_updates(current_block_num).await.unwrap();
-            let name_space = alloy_primitives::Bytes::from("_COMMONWARE_AGGREGATION_");
             println!("storage_updates: {:?}", storage_updates);
             let encoded = yourFuncCall {
-                name_space,
-                block_number: U256::from(1), //TODO fix hardcodod
+                transition_index,
                 contract_address,
                 function_sig,
                 storage_updates,
             }.abi_encode();
             let payload = encoded[4..].to_vec(); // Skip first 4 bytes
             println!("payload: {:?}", payload.encode_hex());
-            println!("block_number: {:?}", block_number);
+            println!("transition_index: {:?}", transition_index);
             // let payload = encoded;
             hasher.update(&payload);
             let payload = hasher.finalize();
             println!("hash: {:?}", payload);
             // Sign the timestamp hash with BN254
             // let payload = self.signer.sign(None, &payload);
-            info!(round = current_block_num, msg = hex(&payload), "generated and signed message");
+            info!(round = transition_index_u64, msg = hex(&payload), "generated and signed message");
 
             // Broadcast payload
             let message = wire::Aggregation {
-                round: current_block_num,
+                round: transition_index_u64,
                 payload: Some(wire::aggregation::Payload::Start(wire::Start {})),
             }
             .encode_to_vec()
@@ -143,7 +142,8 @@ impl<E: Clock> Orchestrator<E> {
                 .send(commonware_p2p::Recipients::All, message, true)
                 .await
                 .expect("failed to broadcast message");
-            signatures.insert(current_block_num, HashMap::new());
+            signatures.insert(transition_index_u64, HashMap::new());
+            info!("Created signatures entry for round: {}, threshold is: {}", transition_index_u64, self.t);
 
             // Listen for messages until the next broadcast
             let continue_time = self.runtime.current() + self.aggregation_frequency;
@@ -197,23 +197,21 @@ impl<E: Clock> Orchestrator<E> {
 
                         // Verify signature
                         // Generate the same payload that contributors are signing
-                        let block_number = msg.round;
-                        let name_space = alloy_primitives::Bytes::from("_COMMONWARE_AGGREGATION_");
+                        let transition_index = msg.round;
                         let function_sig = Function::parse("writeExecuteVote(bytes32,(uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256),bytes,uint256,address,bytes4)").unwrap().selector();
-                        let storage_updates = match self.get_storage_updates(block_number).await {
+                        let storage_updates = match self.get_storage_updates(transition_index).await {
                             Ok(updates) => {
-                                info!("Got storage updates for round: {}", block_number);
+                                info!("Got storage updates for round: {}", transition_index);
                                 updates
                             },
                             Err(e) => {
-                                info!("Failed to get storage updates for round: {}, error: {:?}", block_number, e);
+                                info!("Failed to get storage updates for round: {}, error: {:?}", transition_index, e);
                                 Bytes::default()
                             }
                         };
                         
                         let encoded = yourFuncCall {
-                            name_space,
-                            block_number: U256::from(1), //TODO fix hardcoded
+                            transition_index: U256::from(transition_index),
                             contract_address,
                             function_sig,
                             storage_updates,
@@ -223,25 +221,10 @@ impl<E: Clock> Orchestrator<E> {
                         let payload = hasher.finalize();
                         
                         info!("Verifying signature for round: {} from contributor: {:?}, payload hash: {}", 
-                              block_number, contributor, hex(&payload));
+                              transition_index, contributor, hex(&payload));
                         
                         if !Bn254::verify(None, &payload, &sender, &signature) {
                             info!("Signature verification failed for contributor: {:?}", contributor);
-                            
-                            // Try verifying with just the block number as a fallback
-                            let mut block_hasher = Sha256::new();
-                            let block_payload = block_number.to_be_bytes();
-                            block_hasher.update(&block_payload);
-                            let block_payload_hash = block_hasher.finalize();
-                            
-                            if Bn254::verify(None, &block_payload_hash, &sender, &signature) {
-                                info!("Signature verification succeeded with block number only for contributor: {:?}", contributor);
-                                // Insert signature anyway since it's valid for the block number
-                                round.insert(contributor, signature);
-                            } else {
-                                info!("Signature verification failed with both methods for contributor: {:?}", contributor);
-                            }
-                            
                             continue;
                         }
 
@@ -251,6 +234,8 @@ impl<E: Clock> Orchestrator<E> {
                         round.insert(contributor, signature);
 
                         // Check if should aggregate
+                        info!("Current signatures count for round {}: {}, threshold: {}", 
+                              msg.round, round.len(), self.t);
                         if round.len() < self.t {
                             continue;
                         }
@@ -476,5 +461,32 @@ impl<E: Clock> Orchestrator<E> {
             target_addr,
             target_function
         ).await
+    }
+
+    pub async fn get_state_transition_count(&self) -> Result<U256, Box<dyn std::error::Error + Send + Sync>> {
+        // Get the HTTP endpoint from environment variables
+        let http_endpoint = env::var("HTTP_ENDPOINT")
+            .expect("HTTP_ENDPOINT must be set");
+        let url = Url::parse(&http_endpoint).unwrap();
+        
+        // Create a provider
+        let provider: RootProvider = RootProvider::new_http(url);
+        
+        // Get the contract address from environment variables
+        let contract_address = Address::from_str(
+            &env::var("TARGET_ADDRESS")
+                .expect("TARGET_ADDRESS must be set")
+        ).unwrap();
+        
+        // Create a contract instance
+        let contract = VotingContract::new(contract_address, provider);
+        
+        // Call the stateTransitionCount function
+        let call_return = contract.stateTransitionCount()
+            .call()
+            .await?;
+        
+        // Return the count value
+        Ok(call_return.count)
     }
 }
