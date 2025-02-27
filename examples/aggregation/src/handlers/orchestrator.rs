@@ -326,8 +326,11 @@ impl<E: Clock> Orchestrator<E> {
         info!("Target address: {}", contract_address);
         
         let contract = VotingContract::new(contract_address, provider);
+        let transition_index = contract.stateTransitionCount()
+            .call()
+            .await?.count;
         
-        let call_return = contract.operatorExecuteVote(U256::from(1))//TODO fix hardcoded
+        let call_return = contract.operatorExecuteVote(transition_index)//TODO fix hardcoded
             .call()
             .await?;
         Ok(call_return._0)
@@ -486,7 +489,7 @@ impl<E: Clock> Orchestrator<E> {
             apk_g2_struct,
             sigma_struct,
             storage_updates,
-            U256::from(1), // TODO fix hardcoded.
+            U256::from(block_number), // TODO fix hardcoded.
             target_addr,
             target_function
         ).await
