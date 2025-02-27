@@ -21,6 +21,8 @@ use alloy::{hex::ToHexExt, providers::RootProvider, sol};
 use tracing::info;
 use dotenv::dotenv;
 use alloy::providers::Provider;
+use alloy_signer::{Signer, SignerSync};
+use alloy_signer_local::PrivateKeySigner;
 use alloy_network::Ethereum;
 use alloy_primitives::{Address, Bytes, U256, FixedBytes};
 use url::Url;
@@ -347,13 +349,13 @@ impl<E: Clock> Orchestrator<E> {
             .expect("HTTP_ENDPOINT must be set");
         let url = Url::parse(&http_endpoint).unwrap();
         let provider: RootProvider = RootProvider::new_http(url);
-        
-        let contract_address: Address = Address::from_str(
+        let contract_address = Address::from_str(
             &env::var("TARGET_ADDRESS")
                 .expect("TARGET_ADDRESS must be set")
         ).unwrap();
-        info!("Target address: {}", contract_address);
         
+        let private_key = env::var("PRIVATE_KEY")
+            .expect("PRIVATE_KEY must be set");
         let contract = VotingContract::new(contract_address, provider);
         let value = U256::from_str_radix("100000000000000000", 10).unwrap();
         
@@ -369,23 +371,50 @@ impl<E: Clock> Orchestrator<E> {
         info!("target_function: {:?}", target_function);
         info!("value: {}", value);
         println!(r#"[eth verification] cast s --private-key 0xc7697fdc93ad14a4b17d4865f2736393a19ba4a10e6306a6d327ecf528b61ef6 0xFEDB17c4B3556d2D408C003D2e2cCeD28d4A9Cb3 --value 100000000000000000 "writeExecuteVote(bytes32,(uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256),bytes,uint256,address,bytes4)" "{:?}" "({:?},{:?})" "({:?},{:?})" "({:?},{:?})" "{:?}" "{:?}" "{:?}" "{:?}""#, msg_hash, apk.X, apk.Y, apk_g2.X, apk_g2.Y, sigma.X, sigma.Y, storage_updates, transition_index, target_addr, target_function);
-        // Call the writeExecuteVote function with all parameters
-        let call_return = contract.writeExecuteVote(
-            msg_hash,
-            apk,
-            apk_g2,
-            sigma,
-            storage_updates,
-            transition_index,
-            target_addr,
-            target_function
-        )
-        .value(value)
-        .call()
-        .await?;
+        // Execute the command using std::process::Command
+        let output = std::process::Command::new("cast")
+            .arg("s")
+            .arg("--private-key")
+            .arg("0xc7697fdc93ad14a4b17d4865f2736393a19ba4a10e6306a6d327ecf528b61ef6")
+            .arg("0xFEDB17c4B3556d2D408C003D2e2cCeD28d4A9Cb3")
+            .arg("--value")
+            .arg("100000000000000000")
+            .arg("writeExecuteVote(bytes32,(uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256),bytes,uint256,address,bytes4)")
+            .arg(format!("{:?}", msg_hash))
+            .arg(format!("({:?},{:?})", apk.X, apk.Y))
+            .arg(format!("({:?},{:?})", apk_g2.X, apk_g2.Y))
+            .arg(format!("({:?},{:?})", sigma.X, sigma.Y))
+            .arg(format!("{:?}", storage_updates))
+            .arg(format!("{:?}", transition_index))
+            .arg(format!("{:?}", target_addr))
+            .arg(format!("{:?}", target_function))
+            .output()
+            .expect("Failed to execute command");
+
+        if !output.status.success() {
+            let error = String::from_utf8_lossy(&output.stderr);
+            info!("Command execution failed: {}", error);
+        } else {
+            let success = String::from_utf8_lossy(&output.stdout);
+            info!("Command executed successfully: {}", success);
+        }
+        // Use call() instead of send() to avoid needing a signer
+        // let call_return = contract.writeExecuteVote(
+        //     msg_hash,
+        //     apk,
+        //     apk_g2,
+        //     sigma,
+        //     storage_updates,
+        //     transition_index,
+        //     target_addr,
+        //     target_function
+        // )
+        // .value(value)
+        // .send()
+        // .await?;
         
-        info!("Successfully called writeExecuteVote with transition index: {}", transition_index);
-        Ok(call_return._0)
+        // info!("Successfully called writeExecuteVote with transition index: {}", transition_index);
+        Ok(Bytes::new())
     }
 
     pub async fn execute_vote_with_aggregated_signature(

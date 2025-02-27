@@ -39,6 +39,8 @@ alloy-network = "0.5.4"
 url = { version = "2.0", features = ["serde"] }
 dotenv = "0.15.0"
 alloy = { version = "0.11.1", features = ["full"] }
+alloy-signer = "0.11.1"
+alloy-signer-local = "0.11.1"
 
 [build-dependencies]
 prost-build = { workspace = true }
