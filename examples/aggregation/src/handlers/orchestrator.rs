@@ -90,12 +90,6 @@ impl<E: Clock> Orchestrator<E> {
         let mut hasher = Sha256::new();
         let mut signatures = HashMap::new();
         
-        let registry_coordinator_address: Address = Address::from_str(
-            &env::var("REGISTRY_COORDINATOR_ADDRESS")
-                .expect("REGISTRY_COORDINATOR_ADDRESS must be set")
-        ).unwrap();
-        info!("Registry coordinator address: {}", registry_coordinator_address);
-
         let contract_address = Address::from_str(
             &env::var("TARGET_ADDRESS")
                 .expect("TARGET_ADDRESS must be set")
