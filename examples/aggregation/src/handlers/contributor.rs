@@ -189,6 +189,7 @@ impl Contributor {
                             msg_hash_bytes[0..payload_hash.len()].copy_from_slice(&payload_hash);
                         }
                         let msg_hash = FixedBytes::<32>::from(msg_hash_bytes);
+                        let rpc_url = env::var("HTTP_ENDPOINT").unwrap();
                         println!("Partcipating len: {:?}", participating.len());
                         println!(r#"[eth verification] cast c -r https://eth.llamarpc.com 0xb7ba8bbc36AA5684fC44D02aD666dF8E23BEEbF8 "trySignatureAndApkVerification(bytes32,(uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256))" "{:?}" "({:?},{:?})" "({:?},{:?})" "({:?},{:?})""#, hex(&payload), apk.X, apk.Y, apk_g2.X, apk_g2.Y, asig.X, asig.Y);
                         let output = std::process::Command::new("cast")
@@ -196,6 +197,9 @@ impl Contributor {
                         .arg("--private-key")
                         .arg(&private_key)
                         .arg(contract_address.to_string())
+                        .arg("--rpc-url")
+                        .arg(rpc_url)
+                        .arg("https://eth.llamarpc.com")
                         .arg("--value")
                         .arg("100000000000000000")
                         .arg("writeExecuteVote(bytes32,(uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256),bytes,uint256,address,bytes4)")

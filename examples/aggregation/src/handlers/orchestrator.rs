@@ -380,6 +380,8 @@ impl<E: Clock> Orchestrator<E> {
             .arg("--private-key")
             .arg(private_key)
             .arg(contract_address.to_string())
+            .arg("--rpc-url")
+            .arg(http_endpoint)
             .arg("--value")
             .arg("100000000000000000")
             .arg("writeExecuteVote(bytes32,(uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256),bytes,uint256,address,bytes4)")
