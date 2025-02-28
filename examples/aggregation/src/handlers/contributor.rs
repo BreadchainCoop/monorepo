@@ -209,14 +209,6 @@ impl Contributor {
                         .arg(format!("{:?}", function_sig))
                         .output()
                         .expect("Failed to execute command");
-
-                    if !output.status.success() {
-                        let error = String::from_utf8_lossy(&output.stderr);
-                        info!("Command execution failed: {}", error);
-                    } else {
-                        let success = String::from_utf8_lossy(&output.stdout);
-                        info!("Command executed successfully: {}", success);
-                    }
                 info!(
                     round,
                     msg = hex(&payload),
