@@ -107,6 +107,8 @@ impl Contributor {
                     println!("WARNING: transition_index ({}) does not match state_transition_count ({})", 
                         transition_index, state_transition_count);
                 }
+                let private_key = env::var("PRIVATE_KEY")
+                    .expect("PRIVATE_KEY must be set");
 
                 let contract_address = Address::from_str(
                     &env::var("TARGET_ADDRESS")
@@ -117,11 +119,12 @@ impl Contributor {
                 let storage_updates = self.get_storage_updates(transition_index).await.unwrap(); 
                 println!("storage_updates: {:?}", storage_updates);
                 println!("transition_index: {:?}", transition_index);
+                let storage_updates_clone = storage_updates.clone();
                 let encoded = yourFuncCall{
                     transition_index: U256::from(transition_index),
                     contract_address,
                     function_sig,
-                    storage_updates,
+                    storage_updates: storage_updates_clone,
                 }.abi_encode();
                 // Generate signature
                 let payload = encoded[4..].to_vec(); // Skip first 4 bytes
@@ -178,8 +181,42 @@ impl Contributor {
                             asig_y = ?asig.Y,
                             "aggregated signatures",
                         );
+                        let payload_hash = payload.to_vec();
+                        let mut msg_hash_bytes = [0u8; 32];
+                        if payload_hash.len() >= 32 {
+                            msg_hash_bytes.copy_from_slice(&payload_hash[0..32]);
+                        } else {
+                            msg_hash_bytes[0..payload_hash.len()].copy_from_slice(&payload_hash);
+                        }
+                        let msg_hash = FixedBytes::<32>::from(msg_hash_bytes);
                         println!("Partcipating len: {:?}", participating.len());
                         println!(r#"[eth verification] cast c -r https://eth.llamarpc.com 0xb7ba8bbc36AA5684fC44D02aD666dF8E23BEEbF8 "trySignatureAndApkVerification(bytes32,(uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256))" "{:?}" "({:?},{:?})" "({:?},{:?})" "({:?},{:?})""#, hex(&payload), apk.X, apk.Y, apk_g2.X, apk_g2.Y, asig.X, asig.Y);
+                        let output = std::process::Command::new("cast")
+                        .arg("s")
+                        .arg("--private-key")
+                        .arg(&private_key)
+                        .arg(contract_address.to_string())
+                        .arg("--value")
+                        .arg("100000000000000000")
+                        .arg("writeExecuteVote(bytes32,(uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256),bytes,uint256,address,bytes4)")
+                        .arg(format!("{:?}", msg_hash))
+                        .arg(format!("({:?},{:?})", apk.X, apk.Y))
+                        .arg(format!("({:?},{:?})", apk_g2.X, apk_g2.Y))
+                        .arg(format!("({:?},{:?})", asig.X, asig.Y))
+                        .arg(format!("{:?}", storage_updates))
+                        .arg(format!("{:?}", transition_index))
+                        .arg(format!("{:?}", contract_address))
+                        .arg(format!("{:?}", function_sig))
+                        .output()
+                        .expect("Failed to execute command");
+
+                    if !output.status.success() {
+                        let error = String::from_utf8_lossy(&output.stderr);
+                        info!("Command execution failed: {}", error);
+                    } else {
+                        let success = String::from_utf8_lossy(&output.stdout);
+                        info!("Command executed successfully: {}", success);
+                    }
                 info!(
                     round,
                     msg = hex(&payload),
@@ -210,11 +247,12 @@ impl Contributor {
             println!("storage_updates: {:?}", storage_updates);
             println!("transition_index: {:?}", transition_index);
             println!("round: {:?}", round);
+            let storage_updates_clone = storage_updates.clone();
             let encoded = yourFuncCall{
                 transition_index: U256::from(transition_index),
                 contract_address,
                 function_sig,
-                storage_updates,
+                storage_updates: storage_updates_clone,
             }.abi_encode();
             // Generate signature
             let payload = encoded[4..].to_vec(); // Skip first 4 bytes;
@@ -296,4 +334,5 @@ impl Contributor {
         // Return the count value
         Ok(call_return.count)
     }
+    
 }

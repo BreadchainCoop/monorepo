@@ -237,7 +237,7 @@ fn main() {
         // Check if I am the orchestrator
         const DEFAULT_MESSAGE_BACKLOG: usize = 256;
         const COMPRESSION_LEVEL: Option<i32> = Some(3);
-        const AGGREGATION_FREQUENCY: Duration = Duration::from_secs(10);
+        const AGGREGATION_FREQUENCY: Duration = Duration::from_secs(30);
         if let Some(orchestrator_file) = matches.get_one::<String>("orchestrator") {
             // Create contributor
             let (sender, receiver) = network.register(
