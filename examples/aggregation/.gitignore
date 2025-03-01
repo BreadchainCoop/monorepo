@@ -1,0 +1,3 @@
+keys/*.yaml
+.env
+Cargo.lock
