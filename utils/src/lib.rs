@@ -2,6 +2,8 @@
 
 use prost::{encode_length_delimiter, length_delimiter_len};
 
+pub mod array;
+pub use array::Array;
 mod time;
 pub use time::SystemTimeExt;
 mod priority_set;
@@ -108,6 +110,10 @@ impl SizedSerialize for u32 {
 
 impl SizedSerialize for u64 {
     const SERIALIZED_LEN: usize = 8;
+}
+
+impl SizedSerialize for u128 {
+    const SERIALIZED_LEN: usize = 16;
 }
 
 #[cfg(test)]
